@@ -4,8 +4,8 @@
 
 #include "Agent.h"
 #include "ConfigSim.h"
-#include "misc/Array.h"
-#include "misc/Matrix.h"
+#include "misc/CumList.h"
+#include "misc/CumMatrix.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
@@ -32,11 +32,8 @@ namespace cupat
 	private:
 		ConfigSim _config;
 
-		Matrix<int> _map;
-		void* _dRawMap = nullptr;
-
-		Array<Agent> _agents;
-		void* _dRawAgents = nullptr;
+		CumMatrix<int>* _map;
+		CumList<Agent>* _agents;
 
 
 		V2Int PosToCell(const V2Float& pos) const;

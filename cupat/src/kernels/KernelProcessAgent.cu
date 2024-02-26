@@ -3,13 +3,12 @@
 #include <device_launch_parameters.h>
 
 #include "../../include/Agent.h"
-#include "../../include/misc/Array.h"
-#include "../../include/misc/Matrix.h"
 
 using namespace cupat;
 
 __global__ void cupat::KernelProcessAgent(KernelProcessAgentInput input)
 {
+	/*
 	Matrix<int> map;
 	map.Attach(input.DMap);
 	Array<Agent> agents;
@@ -58,4 +57,5 @@ __global__ void cupat::KernelProcessAgent(KernelProcessAgentInput input)
 
 	if (!isLastCell && agent.CurrCell == nextCell)
 		agent.PathCellIdx += 1;
+	*/
 }

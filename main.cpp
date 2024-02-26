@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "cupat/include/Sim.h"
 
 void PlaceObstacles(cupat::Sim& sim, int width, int height);

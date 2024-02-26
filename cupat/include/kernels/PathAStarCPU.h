@@ -3,17 +3,14 @@
 #include <unordered_map>
 
 #include "../Agent.h"
-#include "../ConfigSim.h"
-#include "../misc/Array.h"
-#include "../misc/Matrix.h"
 #include "../misc/V2Int.h"
 
 namespace cupat
 {
 	struct CpuFindPathAStarInput
 	{
-		void* Map;
-		void* Agents;
+		CumMatrix<int>* Map;
+		CumList<Agent>* Agents;
 		int AgentId;
 	};
 
@@ -39,11 +36,7 @@ namespace cupat
 
 		int expandedNodesCount = 1;
 
-		Matrix<int> map;
-		map.Attach(input.Map);
-		Array<Agent> agents;
-		agents.Attach(input.Agents);
-		Agent& agent = agents.At(input.AgentId);
+		Agent& agent = input.Agents->At(input.AgentId);
 
 		std::unordered_map<V2Int, AStarNode> visited;
 
@@ -75,7 +68,7 @@ namespace cupat
 			for (auto& neibCellDelta : neibsCellsDeltas)
 			{
 				auto neibCell = curr.Cell + neibCellDelta;
-				if (!map.IsValid(neibCell) || map.At(neibCell) != 0)
+				if (!input.Map->IsValid(neibCell) || input.Map->At(neibCell) != 0)
 					continue;
 
 				AStarNode neib;

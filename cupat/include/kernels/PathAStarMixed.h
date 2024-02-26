@@ -3,11 +3,9 @@
 #include <cuda_runtime.h>
 
 #include "../Agent.h"
-#include "../misc/Array.h"
 #include "../misc/CumList.h"
 #include "../misc/CumMatrix.h"
 #include "../misc/CumQueue.h"
-#include "../misc/Matrix.h"
 #include "../misc/V2Int.h"
 
 #define TIME_GET std::chrono::high_resolution_clock::now()
@@ -21,9 +19,8 @@ namespace cupat
 {
 	struct FindPathAStarMixedInput
 	{
-		void* Map;
-		void* DMap;
-		void* DAgents;
+		CumMatrix<int>* Map;
+		CumList<Agent>* Agents;
 		int AgentId;
 	};
 
@@ -129,24 +126,17 @@ namespace cupat
 		int threadsPerBlock = 128;
 		int blocksCount = threadsCount / threadsPerBlock;
 
-		Matrix<int> hMap;
-		hMap.Attach(input.Map);
-		Array<Agent> agents;
-		agents.Attach(input.DAgents);
-		Agent& agent = agents.At(input.AgentId);
+		Agent& agent = input.Agents->At(input.AgentId);
 
-		auto* map = CumMatrix<int>::New(1, hMap.GetCountX(), hMap.GetCountY());
-		auto* visited = CumMatrix<AStarNodeMixed>::New(1, hMap.GetCountX(), hMap.GetCountY());
+		auto* visited = CumMatrix<AStarNodeMixed>::New(
+			1, input.Map->CountX(), input.Map->CountY()
+		);
 		auto* frontier = CumList<AStarNodeMixed>::New(1, 5000);
 		auto* queues = CumQueue<AStarNodeMixed>::New(threadsCount, 100);
 		auto* results = CumList<AStarNodeMixed>::New(threadsCount, 10);
 		bool* isFound;
 		cudaMallocManaged(&isFound, sizeof(bool));
 		*isFound = false;
-
-		for (int x = 0; x < hMap.GetCountX(); x++)
-			for (int y = 0; y < hMap.GetCountY(); y++)
-				map->At(x, y) = hMap.At({ x, y });
 
 		AStarNodeMixed start;
 		start.Cell = agent.TargCell;
@@ -156,6 +146,16 @@ namespace cupat
 		
 		int* dummy;
 		cudaMalloc(&dummy, sizeof(int));
+
+		input.Map->PrefetchOnDevice();
+		visited->PrefetchOnDevice();
+		frontier->PrefetchOnDevice();
+		for (int i = 0; i < threadsCount; i++)
+		{
+			queues[i].PrefetchOnDevice();
+			results[i].PrefetchOnDevice();
+		}
+
 
 		TIME_STAMP(tExpand);
 		long long tExpandCounter = 0;
@@ -170,7 +170,7 @@ namespace cupat
 		while (*isFound == false)
 		{
 			TIME_SET(tExpand);
-			KernelExpandNode << <blocksCount, threadsPerBlock >> > (map, queues, results, agent.CurrCell);
+			KernelExpandNode << <blocksCount, threadsPerBlock >> > (input.Map, queues, results, agent.CurrCell);
 			cudaDeviceSynchronize();
 			TIME_COUNTER_ADD(tExpand, tExpandCounter);
 			if (TryCatchCudaError("kernel expand node"))

@@ -99,16 +99,10 @@
     <ClInclude Include="cupat\include\Helpers.h" />
     <ClInclude Include="cupat\include\kernels\PathAStarMixed.h" />
     <ClInclude Include="cupat\include\kernels\PathAStarCPU.h" />
-    <ClInclude Include="cupat\include\misc\Array.h" />
-    <ClInclude Include="cupat\include\misc\CuAlign.h" />
     <ClInclude Include="cupat\include\misc\CumList.h" />
     <ClInclude Include="cupat\include\misc\CumMap.h" />
     <ClInclude Include="cupat\include\misc\CumMatrix.h" />
     <ClInclude Include="cupat\include\misc\CumQueue.h" />
-    <ClInclude Include="cupat\include\misc\List.h" />
-    <ClInclude Include="cupat\include\misc\Map.h" />
-    <ClInclude Include="cupat\include\misc\Matrix.h" />
-    <ClInclude Include="cupat\include\misc\Queue.h" />
     <ClInclude Include="cupat\include\misc\V2Int.h" />
     <ClInclude Include="cupat\include\Sim.h" />
     <ClInclude Include="cupat\include\misc\V2Float.h" />

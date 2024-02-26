@@ -33,6 +33,13 @@ namespace cupat
 			}
 		}
 
+		__host__ void PrefetchOnDevice()
+		{
+			int device = -1;
+			cudaGetDevice(&device);
+			cudaMemPrefetchAsync(_data, sizeof(T) * _capacity, device, nullptr);
+		}
+
 		__host__ __device__ int Count() const
 		{
 			return _count;

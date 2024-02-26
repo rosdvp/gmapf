@@ -15,7 +15,7 @@ namespace cupat
 		};
 
 	public:
-		__host__ __device__ static CumMatrix* New(int dim, int countX, int countY)
+		__host__ static CumMatrix* New(int dim, int countX, int countY)
 		{
 			CumMatrix* p;
 			cudaMallocManaged(&p, sizeof(CumMatrix) * dim);
@@ -23,6 +23,14 @@ namespace cupat
 				new (p + i) CumMatrix(countX, countY);
 			return p;
 		}
+
+		__host__ static void Free(CumMatrix* ptr, int dim)
+		{
+			for (int i = 0; i < dim; i++)
+				ptr[i].~CumMatrix();
+			cudaFree(ptr);
+		}
+
 
 		__host__ __device__ explicit CumMatrix(int countX, int countY)
 		{
@@ -42,6 +50,14 @@ namespace cupat
 				cudaFree(_entries);
 				_entries = nullptr;
 			}
+		}
+
+		__host__ void PrefetchOnDevice()
+		{
+			int device = -1;
+			cudaGetDevice(&device);
+			printf("device %d\n", device);
+			cudaMemPrefetchAsync_v2(_entries, sizeof(Entry) * _count, device, nullptr);
 		}
 
 		__host__ __device__ bool Has(int idx) const
@@ -70,6 +86,11 @@ namespace cupat
 			return At(GetIdx(x, y));
 		}
 
+		__host__ __device__ T& At(const V2Int& coord)
+		{
+			return At(GetIdx(coord.X, coord.Y));
+		}
+
 		__host__ __device__ int CountX() const
 		{
 			return _countX;
@@ -83,6 +104,11 @@ namespace cupat
 		__host__ __device__ bool IsValid(int x, int y) const
 		{
 			return x >= 0 && x < _countX && y >= 0 && y < _countY;
+		}
+
+		__host__ __device__ bool IsValid(const V2Int& coord) const
+		{
+			return coord.X >= 0 && coord.X < _countX && coord.Y >= 0 && coord.Y < _countY;
 		}
 
 		__host__ __device__ int GetIdx(int x, int y) const
