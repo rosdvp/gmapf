@@ -9,8 +9,8 @@ namespace cupat
 {
 	struct CpuFindPathAStarInput
 	{
-		CumMatrix<int>* Map;
-		CumList<Agent>* Agents;
+		Cum<CuMatrix<int>> Map;
+		Cum<CuList<Agent>> Agents;
 		int AgentId;
 	};
 
@@ -36,7 +36,8 @@ namespace cupat
 
 		int expandedNodesCount = 1;
 
-		Agent& agent = input.Agents->At(input.AgentId);
+		auto map = input.Map.H(0);
+		Agent& agent = input.Agents.H(0).At(input.AgentId);
 
 		std::unordered_map<V2Int, AStarNode> visited;
 
@@ -68,7 +69,7 @@ namespace cupat
 			for (auto& neibCellDelta : neibsCellsDeltas)
 			{
 				auto neibCell = curr.Cell + neibCellDelta;
-				if (!input.Map->IsValid(neibCell) || input.Map->At(neibCell) != 0)
+				if (!map.IsValid(neibCell) || map.At(neibCell) != 0)
 					continue;
 
 				AStarNode neib;

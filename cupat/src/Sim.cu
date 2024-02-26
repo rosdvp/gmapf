@@ -12,8 +12,11 @@ using namespace cupat;
 
 Sim::~Sim()
 {
-	CumMatrix<int>::Free(_map, 1);
-	CumList<Agent>::Free(_agents, 1);
+	_map.HFree();
+	_map.DFree();
+
+	_agents.HFree();
+	_agents.DFree();
 
 	std::cout << "[cupat] sim destroyed" << std::endl;
 }
@@ -26,28 +29,28 @@ void Sim::Init(const ConfigSim& config)
 	TryCatchCudaError("set device");
 	cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
 
-	_map = CumMatrix<int>::New(1, config.MapCountX, config.MapCountY);
-	TryCatchCudaError("allocate map");
+	_map.HAllocAndMark(1, config.MapCountX, config.MapCountY);
+	auto hMap = _map.H(0);
 	for (int x = 0; x < config.MapCountX; x++)
 		for (int y = 0; y < config.MapCountY; y++)
-			_map->At(x, y) = 0;
+			hMap.At(x, y) = 0;
 
-	_agents = CumList<Agent>::New(1, config.AgentsCount);
+	_agents.HAllocAndMark(1, config.AgentsCount);
+	auto hAgents = _agents.H(0);
 	for (int i = 0; i < config.AgentsCount; i++)
-		_agents->Add({});
-	TryCatchCudaError("allocate agents");
+		hAgents.Add({});
 }
 
 void Sim::SetAgentInitialPos(int agentId, const V2Float& currPos)
 {
-	Agent& agent = _agents->At(agentId);
+	Agent& agent = _agents.H(0).At(agentId);
 	agent.CurrPos = currPos;
 	agent.CurrCell = PosToCell(currPos);
 }
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
-	Agent& agent = _agents->At(agentId);
+	Agent& agent = _agents.H(0).At(agentId);
 	agent.TargPos = targPos;
 	agent.TargCell = PosToCell(targPos);
 	agent.IsNewPathRequested = true;
@@ -56,21 +59,19 @@ void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 
 void Sim::SetObstacle(const V2Int& cell)
 {
-	_map->At(cell) = -1;
+	_map.H(0).At(cell) = -1;
 }
 
 void Sim::Start()
 {
+	_map.CopyToDevice();
+	TryCatchCudaError("allocate map");
+	_agents.CopyToDevice();
+	TryCatchCudaError("allocate agents");
 }
 
 bool Sim::DoStep(float deltaTime)
 {
-	int agentsCount = _agents->Count();
-
-	KernelProcessAgentInput input;
-
-	//KernelProcessAgent<<<1, agentsCount>>>(input);
-
 	CpuFindPathAStarInput cpuInp;
 	cpuInp.Map = _map;
 	cpuInp.Agents = _agents;
@@ -101,9 +102,9 @@ bool Sim::DoStep(float deltaTime)
 	return true;
 }
 
-const V2Float& Sim::GetAgentPos(int agentId) const
+const V2Float& Sim::GetAgentPos(int agentId)
 {
-	return _agents->At(agentId).CurrPos;
+	return _agents.H(0).At(agentId).CurrPos;
 }
 
 V2Int Sim::PosToCell(const V2Float& pos) const

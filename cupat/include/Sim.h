@@ -4,8 +4,9 @@
 
 #include "Agent.h"
 #include "ConfigSim.h"
-#include "misc/CumList.h"
-#include "misc/CumMatrix.h"
+#include "misc/CuList.h"
+#include "misc/Cum.h"
+#include "misc/CuMatrix.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
@@ -27,13 +28,13 @@ namespace cupat
 
 		bool DoStep(float deltaTime);
 
-		const V2Float& GetAgentPos(int agentId) const;
+		const V2Float& GetAgentPos(int agentId);
 
 	private:
 		ConfigSim _config;
 
-		CumMatrix<int>* _map;
-		CumList<Agent>* _agents;
+		Cum<CuMatrix<int>> _map;
+		Cum<CuList<Agent>> _agents;
 
 
 		V2Int PosToCell(const V2Float& pos) const;

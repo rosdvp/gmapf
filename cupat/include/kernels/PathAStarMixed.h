@@ -3,9 +3,7 @@
 #include <cuda_runtime.h>
 
 #include "../Agent.h"
-#include "../misc/CumList.h"
-#include "../misc/CumMatrix.h"
-#include "../misc/CumQueue.h"
+#include "../misc/CuQueue.h"
 #include "../misc/V2Int.h"
 
 #define TIME_GET std::chrono::high_resolution_clock::now()
@@ -19,8 +17,8 @@ namespace cupat
 {
 	struct FindPathAStarMixedInput
 	{
-		CumMatrix<int>* Map;
-		CumList<Agent>* Agents;
+		Cum<CuMatrix<int>> Map;
+		Cum<CuList<Agent>> Agents;
 		int AgentId;
 	};
 
@@ -32,10 +30,32 @@ namespace cupat
 		float G;
 	};
 
+	__global__ void KernelSetup(
+		CuList<AStarNodeMixed> frontier,
+		int frontierCapacity,
+		Cum<CuQueue<AStarNodeMixed>> queues,
+		int queueCapacity,
+		Cum<CuList<AStarNodeMixed>> results,
+		int resultCapacity,
+		AStarNodeMixed initialNode)
+	{
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+		queues.D(tid).Mark(queueCapacity);
+		results.D(tid).Mark(resultCapacity);
+
+		if (tid == 0)
+		{
+			frontier.Mark(frontierCapacity);
+			queues.D(tid).Push(initialNode);
+		}
+	}
+
+
 	__global__ void KernelExpandNode(
-		CumMatrix<int>* map,
-		CumQueue<AStarNodeMixed>* queues,
-		CumList<AStarNodeMixed>* results,
+		CuMatrix<int> map,
+		Cum<CuQueue<AStarNodeMixed>> queues,
+		Cum<CuList<AStarNodeMixed>> results,
 		V2Int targCell)
 	{
 		constexpr float heuristicK = 1.0f;
@@ -49,17 +69,20 @@ namespace cupat
 
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-		if (queues[tid].Count() == 0)
+		auto queue = queues.D(tid);
+		if (queue.Count() == 0)
 			return;
 
-		AStarNodeMixed curr = queues[tid].Pop();
+		auto result = results.D(tid);
+
+		AStarNodeMixed curr = queue.Pop();
 
 		//printf("expand (%d, %d)\n", curr.Cell.X, curr.Cell.Y);
 
 		for (auto& neibCellDelta : neibsCellsDeltas)
 		{
 			auto neibCell = curr.Cell + neibCellDelta;
-			if (!map->IsValid(neibCell.X, neibCell.Y) || map->At(neibCell.X, neibCell.Y) != 0)
+			if (!map.IsValid(neibCell.X, neibCell.Y) || map.At(neibCell.X, neibCell.Y) != 0)
 				continue;
 
 			AStarNodeMixed neib;
@@ -67,29 +90,29 @@ namespace cupat
 			neib.PrevCell = curr.Cell;
 			neib.G = curr.G + 1;
 			neib.F = neib.G + V2Int::DistSqr(neibCell, targCell) * heuristicK;
-			results[tid].Add(neib);
+			result.Add(neib);
 		}
 	}
 
 	__global__ void KernelFillFrontier(
-		CumMatrix<AStarNodeMixed>* visited, 
-		CumList<AStarNodeMixed>* frontier,
-		CumList<AStarNodeMixed>* results,
+		CuMatrix<AStarNodeMixed> visited,
+		CuList<AStarNodeMixed> frontier,
+		Cum<CuList<AStarNodeMixed>> results,
 		V2Int targCell,
 		bool* isFound)
 	{
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
-		auto& result = results[tid];
+		auto result = results.D(tid);
 
 		for (int i = 0; i < result.Count(); i++)
 		{
 			auto& node = result.At(i);
 
-			int idx = visited->GetIdx(node.Cell.X, node.Cell.Y);
-			if (visited->TryOccupy(idx))
+			int idx = visited.GetIdx(node.Cell.X, node.Cell.Y);
+			if (visited.TryOccupy(idx))
 			{
-				visited->At(idx) = node;
-				frontier->AddAtomic(node);
+				visited.At(idx) = node;
+				frontier.AddAtomic(node);
 
 				//printf("add to frontier (%d, %d)\n", node.Cell.X, node.Cell.Y);
 
@@ -104,17 +127,21 @@ namespace cupat
 		result.RemoveAll();
 	}
 
-	__global__ void KernelFillQueues(CumList<AStarNodeMixed>* frontier, CumQueue<AStarNodeMixed>* queues)
+	__global__ void KernelFillQueues(
+		CuList<AStarNodeMixed> frontier,
+		Cum<CuQueue<AStarNodeMixed>> queues)
 	{
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		auto queue = queues.D(tid);
+
 		int step = gridDim.x * blockDim.x;
-		for (int i = tid; i < frontier->Count(); i += step)
-			queues[tid].Push(frontier->At(i));
+		for (int i = tid; i < frontier.Count(); i += step)
+			queue.Push(frontier.At(i));
 	}
 
-	__global__ void KernelClearFrontier(CumList<AStarNodeMixed>* frontier)
+	__global__ void KernelClearFrontier(CuList<AStarNodeMixed> frontier)
 	{
-		frontier->RemoveAll();
+		frontier.RemoveAll();
 	}
 
 
@@ -126,35 +153,53 @@ namespace cupat
 		int threadsPerBlock = 128;
 		int blocksCount = threadsCount / threadsPerBlock;
 
-		Agent& agent = input.Agents->At(input.AgentId);
+		int frontierCapacity = 5000;
+		int queueCapacity = 100;
+		int resultCapacity = 10;
 
-		auto* visited = CumMatrix<AStarNodeMixed>::New(
-			1, input.Map->CountX(), input.Map->CountY()
-		);
-		auto* frontier = CumList<AStarNodeMixed>::New(1, 5000);
-		auto* queues = CumQueue<AStarNodeMixed>::New(threadsCount, 100);
-		auto* results = CumList<AStarNodeMixed>::New(threadsCount, 10);
+
+		Agent& agent = input.Agents.H(0).At(input.AgentId);
+
+		auto hMap = input.Map.H(0);
+		auto dMap = input.Map.D(0);
+
+		Cum<CuMatrix<AStarNodeMixed>> cumVisited;
+		cumVisited.HAllocAndMark(1, hMap.CountX(), hMap.CountY());
+		cumVisited.CopyToDevice();
+		auto dVisited = cumVisited.D(0);
+
+		Cum<CuList<AStarNodeMixed>> cumFrontier;
+		cumFrontier.DAlloc(1, frontierCapacity);
+		auto dFrontier = cumFrontier.D(0);
+
+		Cum<CuQueue<AStarNodeMixed>> queues;
+		queues.DAlloc(threadsCount, queueCapacity);
+
+		Cum<CuList<AStarNodeMixed>> results;
+		results.DAlloc(threadsCount, resultCapacity);
+
 		bool* isFound;
 		cudaMallocManaged(&isFound, sizeof(bool));
 		*isFound = false;
 
-		AStarNodeMixed start;
-		start.Cell = agent.TargCell;
-		start.F = V2Int::DistSqr(agent.CurrCell, agent.TargCell) * heuristicK;
-		start.G = 0;
-		queues[0].Push(start);
-		
-		int* dummy;
-		cudaMalloc(&dummy, sizeof(int));
 
-		input.Map->PrefetchOnDevice();
-		visited->PrefetchOnDevice();
-		frontier->PrefetchOnDevice();
-		for (int i = 0; i < threadsCount; i++)
-		{
-			queues[i].PrefetchOnDevice();
-			results[i].PrefetchOnDevice();
-		}
+		AStarNodeMixed initialNode;
+		initialNode.Cell = agent.TargCell;
+		initialNode.F = V2Int::DistSqr(agent.CurrCell, agent.TargCell) * heuristicK;
+		initialNode.G = 0;
+
+		KernelSetup<<<blocksCount, threadsPerBlock>>>(
+			dFrontier,
+			frontierCapacity,
+			queues,
+			queueCapacity,
+			results,
+			resultCapacity,
+			initialNode
+		);
+		cudaDeviceSynchronize();
+		if (TryCatchCudaError("kernel setup"))
+			return;
 
 
 		TIME_STAMP(tExpand);
@@ -170,14 +215,25 @@ namespace cupat
 		while (*isFound == false)
 		{
 			TIME_SET(tExpand);
-			KernelExpandNode << <blocksCount, threadsPerBlock >> > (input.Map, queues, results, agent.CurrCell);
+			KernelExpandNode<<<blocksCount, threadsPerBlock>>>(
+				dMap,
+				queues,
+				results,
+				agent.CurrCell
+			);
 			cudaDeviceSynchronize();
 			TIME_COUNTER_ADD(tExpand, tExpandCounter);
 			if (TryCatchCudaError("kernel expand node"))
 				return;
 
 			TIME_SET(tFillFrontier);
-			KernelFillFrontier<<<blocksCount, threadsPerBlock >>>(visited, frontier, results, agent.CurrCell, isFound);
+			KernelFillFrontier<<<blocksCount, threadsPerBlock>>>(
+				dVisited,
+				dFrontier,
+				results,
+				agent.CurrCell,
+				isFound
+			);
 			cudaDeviceSynchronize();
 			TIME_COUNTER_ADD(tFillFrontier, tFillFrontierCounter);
 			if (TryCatchCudaError("kernel expand node"))
@@ -188,17 +244,16 @@ namespace cupat
 			//	printf("(%d, %d)\n", frontier->At(i).Cell.X, frontier->At(i).Cell.Y);
 
 			TIME_SET(tFillQueues);
-			KernelFillQueues << <blocksCount, threadsPerBlock >> > (frontier, queues);
+			KernelFillQueues<<<blocksCount, threadsPerBlock>>>(dFrontier, queues);
 			cudaDeviceSynchronize();
 			TIME_COUNTER_ADD(tFillQueues, tFillQueuesCounter);
 			if (TryCatchCudaError("kernel fill queues"))
 				return;
 
-			KernelClearFrontier<<<1, 1>>>(frontier);
+			KernelClearFrontier<<<1, 1>>>(dFrontier);
 			cudaDeviceSynchronize();
 			if (TryCatchCudaError("kernel clear frontier"))
 				return;
-
 
 			cyclesCount += 1;
 		}
@@ -212,21 +267,32 @@ namespace cupat
 		std::cout << "fill queues time: " << TIME_COUNTER_GET(tFillQueuesCounter)
 			<< ", avg: " << TIME_COUNTER_GET(tFillQueuesCounter) / cyclesCount << std::endl;
 
-		if (!isFound)
+		if (isFound)
+		{
+			cumVisited.CopyToHost();
+			auto hVisited = cumVisited.H(0);
+
+			printf("path:\n");
+
+			V2Int iter = agent.CurrCell;
+			do
+			{
+				iter = hVisited.At(iter.X, iter.Y).PrevCell;
+				printf("(%d, %d)\n", iter.X, iter.Y);
+			} while (iter != agent.TargCell);
+
+			printf("----------\n");
+		}
+		else
 		{
 			printf("failed to find path\n");
-			return;
 		}
 
-		printf("path:\n");
-
-		V2Int iter = agent.CurrCell;
-		do
-		{
-			iter = visited->At(iter.X, iter.Y).PrevCell;
-			printf("(%d, %d)\n", iter.X, iter.Y);
-		} while (iter != agent.TargCell);
-
-		printf("----------\n");
+		cumVisited.HFree();
+		cumVisited.DFree();
+		cumFrontier.DFree();
+		queues.DFree();
+		results.DFree();
+		cudaFree(isFound);
 	}
 }
