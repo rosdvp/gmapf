@@ -35,14 +35,11 @@ namespace cupat
 		int frontierCapacity,
 		Cum<CuQueue<AStarNodeMixed>> queues,
 		int queueCapacity,
-		Cum<CuList<AStarNodeMixed>> results,
-		int resultCapacity,
 		AStarNodeMixed initialNode)
 	{
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
 		queues.D(tid).Mark(queueCapacity);
-		results.D(tid).Mark(resultCapacity);
 
 		if (tid == 0)
 		{
@@ -55,7 +52,7 @@ namespace cupat
 	__global__ void KernelExpandNode(
 		CuMatrix<int> map,
 		Cum<CuQueue<AStarNodeMixed>> queues,
-		Cum<CuList<AStarNodeMixed>> results,
+		CuList<AStarNodeMixed> frontier,
 		V2Int targCell)
 	{
 		constexpr float heuristicK = 1.0f;
@@ -73,8 +70,6 @@ namespace cupat
 		if (queue.Count() == 0)
 			return;
 
-		auto result = results.D(tid);
-
 		AStarNodeMixed curr = queue.Pop();
 
 		//printf("expand (%d, %d)\n", curr.Cell.X, curr.Cell.Y);
@@ -90,7 +85,7 @@ namespace cupat
 			neib.PrevCell = curr.Cell;
 			neib.G = curr.G + 1;
 			neib.F = neib.G + V2Int::DistSqr(neibCell, targCell) * heuristicK;
-			result.Add(neib);
+			frontier.AddAtomic(neib);
 		}
 	}
 
@@ -128,15 +123,30 @@ namespace cupat
 	}
 
 	__global__ void KernelFillQueues(
+		CuMatrix<AStarNodeMixed> visited,
 		CuList<AStarNodeMixed> frontier,
-		Cum<CuQueue<AStarNodeMixed>> queues)
+		Cum<CuQueue<AStarNodeMixed>> queues,
+		V2Int targCell,
+		bool* isFound)
 	{
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 		auto queue = queues.D(tid);
 
 		int step = gridDim.x * blockDim.x;
 		for (int i = tid; i < frontier.Count(); i += step)
-			queue.Push(frontier.At(i));
+		{
+			auto& node = frontier.At(i);
+			int idx = visited.GetIdx(node.Cell.X, node.Cell.Y);
+			if (visited.TryOccupy(idx))
+			{
+				visited.At(idx) = node;
+
+				queue.Push(frontier.At(i));
+
+				if (node.Cell == targCell)
+					*isFound = true;
+			}
+		}
 	}
 
 	__global__ void KernelClearFrontier(CuList<AStarNodeMixed> frontier)
@@ -155,7 +165,6 @@ namespace cupat
 
 		int frontierCapacity = 5000;
 		int queueCapacity = 100;
-		int resultCapacity = 10;
 
 
 		Agent& agent = input.Agents.H(0).At(input.AgentId);
@@ -175,8 +184,8 @@ namespace cupat
 		Cum<CuQueue<AStarNodeMixed>> queues;
 		queues.DAlloc(threadsCount, queueCapacity);
 
-		Cum<CuList<AStarNodeMixed>> results;
-		results.DAlloc(threadsCount, resultCapacity);
+		//Cum<CuList<AStarNodeMixed>> results;
+		//results.DAlloc(threadsCount, resultCapacity);
 
 		bool* isFound;
 		cudaMallocManaged(&isFound, sizeof(bool));
@@ -193,8 +202,6 @@ namespace cupat
 			frontierCapacity,
 			queues,
 			queueCapacity,
-			results,
-			resultCapacity,
 			initialNode
 		);
 		cudaDeviceSynchronize();
@@ -204,8 +211,6 @@ namespace cupat
 
 		TIME_STAMP(tExpand);
 		long long tExpandCounter = 0;
-		TIME_STAMP(tFillFrontier);
-		long long tFillFrontierCounter = 0;
 		TIME_STAMP(tFillQueues);
 		long long tFillQueuesCounter = 0;
 		TIME_STAMP(tStart);
@@ -218,7 +223,7 @@ namespace cupat
 			KernelExpandNode<<<blocksCount, threadsPerBlock>>>(
 				dMap,
 				queues,
-				results,
+				dFrontier,
 				agent.CurrCell
 			);
 			cudaDeviceSynchronize();
@@ -226,25 +231,14 @@ namespace cupat
 			if (TryCatchCudaError("kernel expand node"))
 				return;
 
-			TIME_SET(tFillFrontier);
-			KernelFillFrontier<<<blocksCount, threadsPerBlock>>>(
+			TIME_SET(tFillQueues);
+			KernelFillQueues<<<blocksCount, threadsPerBlock>>>(
 				dVisited,
-				dFrontier,
-				results,
+				dFrontier, 
+				queues,
 				agent.CurrCell,
 				isFound
 			);
-			cudaDeviceSynchronize();
-			TIME_COUNTER_ADD(tFillFrontier, tFillFrontierCounter);
-			if (TryCatchCudaError("kernel expand node"))
-				return;
-
-			//printf("frontier:\n");
-			//for (int i = 0; i < frontier->Count(); i++)
-			//	printf("(%d, %d)\n", frontier->At(i).Cell.X, frontier->At(i).Cell.Y);
-
-			TIME_SET(tFillQueues);
-			KernelFillQueues<<<blocksCount, threadsPerBlock>>>(dFrontier, queues);
 			cudaDeviceSynchronize();
 			TIME_COUNTER_ADD(tFillQueues, tFillQueuesCounter);
 			if (TryCatchCudaError("kernel fill queues"))
@@ -262,8 +256,6 @@ namespace cupat
 		std::cout << "find time: " << TIME_DIFF_MS(tStart) << std::endl;
 		std::cout << "expand time: " << TIME_COUNTER_GET(tExpandCounter)
 			<< ", avg: " << TIME_COUNTER_GET(tExpandCounter) / cyclesCount << std::endl;
-		std::cout << "fill frontier time: " << TIME_COUNTER_GET(tFillFrontierCounter)
-			<< ", avg: " << TIME_COUNTER_GET(tFillFrontierCounter) / cyclesCount << std::endl;
 		std::cout << "fill queues time: " << TIME_COUNTER_GET(tFillQueuesCounter)
 			<< ", avg: " << TIME_COUNTER_GET(tFillQueuesCounter) / cyclesCount << std::endl;
 
@@ -292,7 +284,6 @@ namespace cupat
 		cumVisited.DFree();
 		cumFrontier.DFree();
 		queues.DFree();
-		results.DFree();
 		cudaFree(isFound);
 	}
 }
