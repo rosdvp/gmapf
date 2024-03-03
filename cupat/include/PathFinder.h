@@ -101,8 +101,8 @@ namespace cupat
 		CuList<Agent> agents,
 		CuList<int> procAgentsIndices,
 		CuList<PathRequest> requests,
-		int* mgProcAgentsCount,
-		int* mgRequestsCount)
+		int* procAgentsCount,
+		int* requestsCount)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		int threadsCount = gridDim.x * blockDim.x;
@@ -113,7 +113,7 @@ namespace cupat
 			if (!agent.IsNewPathRequested)
 				continue;
 			procAgentsIndices.AddAtomic(i);
-			atomicAdd(mgProcAgentsCount, 1);
+			atomicAdd(procAgentsCount, 1);
 
 			bool isPathRequested = false;
 			agent.PathIdx = pathsStorage.TryUsePath(agent.CurrCell, agent.TargCell, isPathRequested);
@@ -124,7 +124,7 @@ namespace cupat
 				req.StartCell = agent.CurrCell;
 				req.TargetCell = agent.TargCell;
 				requests.AddAtomic(req);
-				atomicAdd(mgRequestsCount, 1);
+				atomicAdd(requestsCount, 1);
 			}
 		}
 	}
@@ -228,13 +228,13 @@ namespace cupat
 		PathsStorage pathsStorage,
 		CuList<PathRequest> requests,
 		Cum<CuMatrix<AStarNode>> visiteds,
-		bool* managedFoundFlags)
+		bool* foundFlags)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		if (tid >= requests.Count())
 			return;
 
-		if (managedFoundFlags[tid] == false)
+		if (foundFlags[tid] == false)
 		{
 			//TODO set path usage to zero
 			printf("path not found");
@@ -341,9 +341,12 @@ namespace cupat
 			_frontiers.DAlloc(parallelAgentsCount, frontierCapacity);
 			_queues.DAlloc(parallelAgentsCount * threadsPerAgent, queueCapacity);
 
+			_hProcAgentsCount = static_cast<int*>(malloc(sizeof(int)));
+			_hRequestsCount = static_cast<int*>(malloc(sizeof(int)));
+
 			cudaMalloc(&_dFoundFlags, sizeof(bool) * parallelAgentsCount);
-			cudaMallocManaged(&_mgProcAgentsCount, sizeof(int));
-			cudaMallocManaged(&_mgRequestsCount, sizeof(int));
+			cudaMalloc(&_dProcAgentsCount, sizeof(int));
+			cudaMalloc(&_dRequestsCount, sizeof(int));
 
 			KernelMarkCollections<<<parallelAgentsCount, threadsPerAgent>>>(
 				_map.D(0),
@@ -359,6 +362,18 @@ namespace cupat
 			cudaDeviceSynchronize();
 			if (TryCatchCudaError("path finder, mark collections"))
 				return;
+
+			cudaStreamCreate(&_stream);
+			cudaEventCreate(&_evClearCollectionsStart);
+			cudaEventCreate(&_evClearCollectionsEnd);
+			cudaEventCreate(&_evPrepareSearchStart);
+			cudaEventCreate(&_evPrepareSearchEnd);
+			cudaEventCreate(&_evFindStart);
+			cudaEventCreate(&_evFindEnd);
+			cudaEventCreate(&_evBuildPathsStart);
+			cudaEventCreate(&_evBuildPathsEnd);
+			cudaEventCreate(&_evAttachPathsStart);
+			cudaEventCreate(&_evAttachPathsEnd);
 		}
 
 		~PathFinder()
@@ -371,25 +386,25 @@ namespace cupat
 			_queues.DFree();
 
 			cudaFree(_dFoundFlags);
-			cudaFree(_mgProcAgentsCount);
-			cudaFree(_mgRequestsCount);
+			cudaFree(_dProcAgentsCount);
+			cudaFree(_dRequestsCount);
+
+			free(_hProcAgentsCount);
+			free(_hRequestsCount);
 		}
 
 
 		void Find()
 		{
-			TIME_STAMP(tClearCollections);
 			ClearCollections();
-			auto durClearCollections = TIME_DIFF_MS(tClearCollections);
-
-			TIME_STAMP(tPrepareSearch);
 			PrepareSearch();
-			auto durPrepareSearch = TIME_DIFF_MS(tPrepareSearch);
 
-			int requestsCount = *_mgRequestsCount;
+			cudaStreamSynchronize(_stream);
 
-			TIME_STAMP(tFindPath);
-			KernelFindPaths<<<requestsCount, _threadsPerAgent>>>(
+			int requestsCount = *_hRequestsCount;
+
+			cudaEventRecord(_evFindStart, _stream);
+			KernelFindPaths<<<requestsCount, _threadsPerAgent, 0, _stream>>>(
 				_heuristicK,
 				_map.D(0),
 				_requests.D(0),
@@ -398,27 +413,26 @@ namespace cupat
 				_queues,
 				_dFoundFlags
 			);
-			cudaDeviceSynchronize();
-			if (TryCatchCudaError("path finder, find path"))
-				return;
-			auto durFindPath = TIME_DIFF_MS(tFindPath);
+			cudaEventRecord(_evFindEnd, _stream);
 
-			TIME_STAMP(tBuildPaths);
 			BuildPaths();
-			auto durBuildPaths = TIME_DIFF_MS(tBuildPaths);
-
-			TIME_STAMP(tAttachPaths);
 			AttachPathsToAgents();
-			auto durAttachPaths = TIME_DIFF_MS(tAttachPaths);
 
-			KernelCheckPaths<<<1, 1>>>(_pathsStorage, _agents.D(0));
-			cudaDeviceSynchronize();
-			if (TryCatchCudaError("path finder, check paths"))
-				return;
+			KernelCheckPaths<<<1, 1, 0, _stream>>>(_pathsStorage, _agents.D(0));
+
+			cudaStreamSynchronize(_stream);
+
+			float durClearCollections, durPrepareSearch, durFind, durBuildPaths, durAttachPaths;
+
+			cudaEventElapsedTime(&durClearCollections, _evClearCollectionsStart, _evClearCollectionsEnd);
+			cudaEventElapsedTime(&durPrepareSearch, _evPrepareSearchStart, _evPrepareSearchEnd);
+			cudaEventElapsedTime(&durFind, _evFindStart, _evFindEnd);
+			cudaEventElapsedTime(&durBuildPaths, _evBuildPathsStart, _evBuildPathsEnd);
+			cudaEventElapsedTime(&durAttachPaths, _evAttachPathsStart, _evAttachPathsEnd);
 
 			std::cout << "clear collections ms: " << durClearCollections << std::endl;
 			std::cout << "prepare search ms: " << durPrepareSearch << std::endl;
-			std::cout << "find paths ms: " << durFindPath << std::endl;
+			std::cout << "find paths ms: " << durFind << std::endl;
 			std::cout << "build paths ms: " << durBuildPaths << std::endl;
 			std::cout << "attach paths ms: " << durAttachPaths << std::endl;
 		}
@@ -442,12 +456,34 @@ namespace cupat
 		Cum<CuList<AStarNode>> _frontiers;
 		Cum<CuQueue<AStarNode>> _queues;
 		bool* _dFoundFlags = nullptr;
-		int* _mgProcAgentsCount = nullptr;
-		int* _mgRequestsCount = nullptr;
+		int* _hProcAgentsCount = nullptr;
+		int* _dProcAgentsCount = nullptr;
+		int* _hRequestsCount = nullptr;
+		int* _dRequestsCount = nullptr;
+
+		cudaStream_t _stream;
+		cudaEvent_t _evClearCollectionsStart;
+		cudaEvent_t _evClearCollectionsEnd;
+		cudaEvent_t _evPrepareSearchStart;
+		cudaEvent_t _evPrepareSearchEnd;
+		cudaEvent_t _evFindStart;
+		cudaEvent_t _evFindEnd;
+		cudaEvent_t _evBuildPathsStart;
+		cudaEvent_t _evBuildPathsEnd;
+		cudaEvent_t _evAttachPathsStart;
+		cudaEvent_t _evAttachPathsEnd;
+
 
 		void ClearCollections()
 		{
-			KernelClearCollections<<<_parallelAgentsCount, _threadsPerAgent>>>(
+			cudaEventRecord(_evClearCollectionsStart, _stream);
+
+			*_hProcAgentsCount = 0;
+			cudaMemcpyAsync(_dProcAgentsCount, _hProcAgentsCount, sizeof(int), cudaMemcpyHostToDevice, _stream);
+			*_hRequestsCount = 0;
+			cudaMemcpyAsync(_dRequestsCount, _hRequestsCount, sizeof(int), cudaMemcpyHostToDevice, _stream);
+
+			KernelClearCollections<<<_parallelAgentsCount, _threadsPerAgent, 0, _stream>>>(
 				_visiteds,
 				_queues,
 				_frontiers.D(0),
@@ -455,67 +491,71 @@ namespace cupat
 				_requests.D(0),
 				_dFoundFlags
 			);
-			cudaDeviceSynchronize();
-			if (TryCatchCudaError("path finder, clear collections"))
-				return;
 
-			*_mgProcAgentsCount = 0;
-			*_mgRequestsCount = 0;
+			cudaEventRecord(_evClearCollectionsEnd);
 		}
 
 
 		void PrepareSearch()
 		{
+			cudaEventRecord(_evPrepareSearchStart, _stream);
+
 			int threadsCount = 512;
 			int threadsPerBlock = 128;
 			int blocksCount = threadsCount / threadsPerBlock;
 
-			KernelPrepareSearch<<<blocksCount, threadsPerBlock>>>(
+			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_pathsStorage,
 				_agents.D(0),
 				_procAgentsIndices.D(0),
 				_requests.D(0),
-				_mgProcAgentsCount,
-				_mgRequestsCount
+				_dProcAgentsCount,
+				_dRequestsCount
 			);
-			cudaDeviceSynchronize();
 
-			TryCatchCudaError("path finder, prepare search");
+			cudaMemcpyAsync(_hProcAgentsCount, _dProcAgentsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
+			cudaMemcpyAsync(_hRequestsCount, _dRequestsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
+
+			cudaEventRecord(_evPrepareSearchEnd, _stream);
 		}
 
 		void BuildPaths()
 		{
-			int threadsCount = *_mgRequestsCount;
+			cudaEventRecord(_evBuildPathsStart, _stream);
+
+			int threadsCount = *_hRequestsCount;
 			int threadsPerBlock = 32;
 			int blocksCount = threadsCount / threadsPerBlock;
 			if (blocksCount * threadsPerBlock < threadsCount)
 				blocksCount += 1;
 
-			KernelBuildPath<<<blocksCount, threadsCount>>>(
+			KernelBuildPath<<<blocksCount, threadsCount, 0, _stream>>>(
 				_pathsStorage,
 				_requests.D(0),
 				_visiteds,
 				_dFoundFlags
 			);
-			cudaDeviceSynchronize();
-			TryCatchCudaError("path finder, build paths");
+
+			cudaEventRecord(_evBuildPathsEnd);
 		}
 
 		void AttachPathsToAgents()
 		{
-			int threadsCount = *_mgProcAgentsCount;
+			cudaEventRecord(_evAttachPathsStart, _stream);
+
+			int threadsCount = *_hProcAgentsCount;
 			int threadsPerBlock = 32;
 			int blocksCount = threadsCount / threadsPerBlock;
 			if (blocksCount * threadsPerBlock < threadsCount)
 				blocksCount += 1;
 
-			KernelAttachPathsToAgents<<<blocksCount, threadsPerBlock>>>(
+			KernelAttachPathsToAgents<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_pathsStorage,
 				_agents.D(0),
 				_procAgentsIndices.D(0)
 			);
-			cudaDeviceSynchronize();
-			TryCatchCudaError("path finder, attach paths to agents");
+
+			cudaEventRecord(_evAttachPathsEnd);
 		}
 	};
 }
