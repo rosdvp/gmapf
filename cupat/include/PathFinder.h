@@ -72,7 +72,8 @@ namespace cupat
 		Cum<CuQueue<AStarNode>> queues,
 		CuList<AStarNode> frontier,
 		CuList<int> agentsIndices,
-		CuList<PathRequest> requests)
+		CuList<PathRequest> requests,
+		bool* dFoundFlags)
 	{
 		int tid = threadIdx.x;
 		int bid = blockIdx.x;
@@ -90,13 +91,18 @@ namespace cupat
 			requests.RemoveAll();
 			agentsIndices.RemoveAll();
 		}
+
+		if (tid == 0)
+			dFoundFlags[bid] = false;
 	}
 
 	__global__ void KernelPrepareSearch(
 		PathsStorage pathsStorage,
 		CuList<Agent> agents,
 		CuList<int> procAgentsIndices,
-		CuList<PathRequest> requests)
+		CuList<PathRequest> requests,
+		int* mgProcAgentsCount,
+		int* mgRequestsCount)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		int threadsCount = gridDim.x * blockDim.x;
@@ -107,11 +113,19 @@ namespace cupat
 			if (!agent.IsNewPathRequested)
 				continue;
 			procAgentsIndices.AddAtomic(i);
+			atomicAdd(mgProcAgentsCount, 1);
 
 			bool isPathRequested = false;
 			agent.PathIdx = pathsStorage.TryUsePath(agent.CurrCell, agent.TargCell, isPathRequested);
 			if (isPathRequested)
-				requests.AddAtomic({agent.PathIdx, agent.CurrCell, agent.TargCell});
+			{
+				PathRequest req;
+				req.PathIdx = agent.PathIdx;
+				req.StartCell = agent.CurrCell;
+				req.TargetCell = agent.TargCell;
+				requests.AddAtomic(req);
+				atomicAdd(mgRequestsCount, 1);
+			}
 		}
 	}
 
@@ -122,7 +136,7 @@ namespace cupat
 		Cum<CuMatrix<AStarNode>> visiteds,
 		Cum<CuList<AStarNode>> frontiers,
 		Cum<CuQueue<AStarNode>> queues,
-		bool* managedFoundFlags)
+		bool* dFoundFlags)
 	{
 		V2Int neibsCellsDeltas[4] =
 		{
@@ -159,7 +173,7 @@ namespace cupat
 			visited.TryOccupy(visitedIdx);
 			visited.At(visitedIdx) = initialNode;
 
-			managedFoundFlags[bid] = false;
+			dFoundFlags[bid] = false;
 		}
 
 		while (!sharedIsFound)
@@ -198,7 +212,7 @@ namespace cupat
 					if (node.Cell == targCell)
 					{
 						sharedIsFound = true;
-						managedFoundFlags[bid] = true;
+						dFoundFlags[bid] = true;
 					}
 				}
 			}
@@ -327,9 +341,9 @@ namespace cupat
 			_frontiers.DAlloc(parallelAgentsCount, frontierCapacity);
 			_queues.DAlloc(parallelAgentsCount * threadsPerAgent, queueCapacity);
 
-			cudaMallocManaged(&_managedFoundFlags, sizeof(bool) * parallelAgentsCount);
-			for (int i = 0; i < parallelAgentsCount; i++)
-				_managedFoundFlags[i] = false;
+			cudaMalloc(&_dFoundFlags, sizeof(bool) * parallelAgentsCount);
+			cudaMallocManaged(&_mgProcAgentsCount, sizeof(int));
+			cudaMallocManaged(&_mgRequestsCount, sizeof(int));
 
 			KernelMarkCollections<<<parallelAgentsCount, threadsPerAgent>>>(
 				_map.D(0),
@@ -345,46 +359,34 @@ namespace cupat
 			cudaDeviceSynchronize();
 			if (TryCatchCudaError("path finder, mark collections"))
 				return;
-
-			KernelClearCollections<<<parallelAgentsCount, threadsPerAgent>>>(
-				_visiteds,
-				_queues,
-				_frontiers.D(0),
-				_procAgentsIndices.D(0),
-				_requests.D(0)
-			);
-			cudaDeviceSynchronize();
-			if (TryCatchCudaError("path finder, clear collections"))
-				return;
 		}
 
 		~PathFinder()
 		{
 			_pathsStorage.DFree();
-
 			_procAgentsIndices.DFree();
-			_procAgentsIndices.HFree();
-
 			_requests.DFree();
-			_requests.HFree();
-
 			_visiteds.DFree();
-
 			_frontiers.DFree();
 			_queues.DFree();
+
+			cudaFree(_dFoundFlags);
+			cudaFree(_mgProcAgentsCount);
+			cudaFree(_mgRequestsCount);
 		}
 
 
 		void Find()
 		{
+			TIME_STAMP(tClearCollections);
+			ClearCollections();
+			auto durClearCollections = TIME_DIFF_MS(tClearCollections);
+
 			TIME_STAMP(tPrepareSearch);
 			PrepareSearch();
 			auto durPrepareSearch = TIME_DIFF_MS(tPrepareSearch);
 
-			_procAgentsIndices.CopyToHost();
-			_requests.CopyToHost();
-
-			int requestsCount = _requests.H(0).Count();
+			int requestsCount = *_mgRequestsCount;
 
 			TIME_STAMP(tFindPath);
 			KernelFindPaths<<<requestsCount, _threadsPerAgent>>>(
@@ -394,7 +396,7 @@ namespace cupat
 				_visiteds,
 				_frontiers,
 				_queues,
-				_managedFoundFlags
+				_dFoundFlags
 			);
 			cudaDeviceSynchronize();
 			if (TryCatchCudaError("path finder, find path"))
@@ -414,6 +416,7 @@ namespace cupat
 			if (TryCatchCudaError("path finder, check paths"))
 				return;
 
+			std::cout << "clear collections ms: " << durClearCollections << std::endl;
 			std::cout << "prepare search ms: " << durPrepareSearch << std::endl;
 			std::cout << "find paths ms: " << durFindPath << std::endl;
 			std::cout << "build paths ms: " << durBuildPaths << std::endl;
@@ -438,7 +441,27 @@ namespace cupat
 		Cum<CuMatrix<AStarNode>> _visiteds;
 		Cum<CuList<AStarNode>> _frontiers;
 		Cum<CuQueue<AStarNode>> _queues;
-		bool* _managedFoundFlags = nullptr;
+		bool* _dFoundFlags = nullptr;
+		int* _mgProcAgentsCount = nullptr;
+		int* _mgRequestsCount = nullptr;
+
+		void ClearCollections()
+		{
+			KernelClearCollections<<<_parallelAgentsCount, _threadsPerAgent>>>(
+				_visiteds,
+				_queues,
+				_frontiers.D(0),
+				_procAgentsIndices.D(0),
+				_requests.D(0),
+				_dFoundFlags
+			);
+			cudaDeviceSynchronize();
+			if (TryCatchCudaError("path finder, clear collections"))
+				return;
+
+			*_mgProcAgentsCount = 0;
+			*_mgRequestsCount = 0;
+		}
 
 
 		void PrepareSearch()
@@ -451,7 +474,9 @@ namespace cupat
 				_pathsStorage,
 				_agents.D(0),
 				_procAgentsIndices.D(0),
-				_requests.D(0)
+				_requests.D(0),
+				_mgProcAgentsCount,
+				_mgRequestsCount
 			);
 			cudaDeviceSynchronize();
 
@@ -460,7 +485,7 @@ namespace cupat
 
 		void BuildPaths()
 		{
-			int threadsCount = _requests.H(0).Count();
+			int threadsCount = *_mgRequestsCount;
 			int threadsPerBlock = 32;
 			int blocksCount = threadsCount / threadsPerBlock;
 			if (blocksCount * threadsPerBlock < threadsCount)
@@ -470,7 +495,7 @@ namespace cupat
 				_pathsStorage,
 				_requests.D(0),
 				_visiteds,
-				_managedFoundFlags
+				_dFoundFlags
 			);
 			cudaDeviceSynchronize();
 			TryCatchCudaError("path finder, build paths");
@@ -478,7 +503,7 @@ namespace cupat
 
 		void AttachPathsToAgents()
 		{
-			int threadsCount = _procAgentsIndices.H(0).Count();
+			int threadsCount = *_mgProcAgentsCount;
 			int threadsPerBlock = 32;
 			int blocksCount = threadsCount / threadsPerBlock;
 			if (blocksCount * threadsPerBlock < threadsCount)
