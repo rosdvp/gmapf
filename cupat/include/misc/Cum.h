@@ -5,7 +5,7 @@
 
 namespace cupat
 {
-	template<typename T, typename ...Test>
+	template<typename T>
 	class Cum
 	{
 	public:

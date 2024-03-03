@@ -5,43 +5,32 @@
 namespace cupat
 {
 	template<typename TKey, typename TVal>
-	class CumMap
+	class CuMap
 	{
 	private:
 		struct __align__(16) Entry
 		{
-			bool IsEmpty;
+			bool IsOccupied;
 			TKey Key;
 			TVal Val;
 		};
 
 	public:
-		static CumMap* New(int count, int eachCapacity)
+		__host__ __device__ explicit CuMap(void* ptr)
 		{
-			CumMap* ptr;
-			cudaMallocManaged(&ptr, count * sizeof(CumMap));
-			for (int i = 0; i < count; i++)
-				new (ptr + i) CumMap(eachCapacity);
-			return ptr;
+			auto p = static_cast<char*>(ptr);
+			_capacity = reinterpret_cast<int*>(p);
+			p += 8;
+			_entries = reinterpret_cast<Entry*>(p);
 		}
 
-		explicit CumMap(int capacity)
+		__host__ __device__ void Mark(int capacity)
 		{
-			_capacity = capacity;
-			cudaMallocManaged(&_entries, sizeof(Entry) * capacity);
+			*_capacity = capacity;
+
 			for (int i = 0; i < capacity; i++)
-				_entries[i].IsEmpty = true;
+				_entries[i].IsOccupied = false;
 		}
-
-		~CumMap()
-		{
-			if (_entries != nullptr)
-			{
-				cudaFree(_entries);
-				_entries = nullptr;
-			}
-		}
-
 
 		__host__ __device__ bool Has(const TKey& key) const
 		{
@@ -65,22 +54,24 @@ namespace cupat
 		}
 
 	private:
-		int _capacity;
+		int* _capacity = nullptr;
 		Entry* _entries = nullptr;
 
 
 		__host__ __device__ Entry& GetEntry(const TKey& key) const
 		{
+			int capacity = *_capacity;
+
 			size_t hash = key.GetHash();
-			int startIdx = hash % _capacity;
+			int startIdx = hash % capacity;
 			int idx = startIdx;
-			for (int i = 0; i < 10; i++)
+			for (int i = 0; i < capacity; i++)
 			{
-				idx = (startIdx + i) % _capacity;
-				if (_entries[idx].IsEmpty || _entries[idx].Key == key)
+				idx = (startIdx + i) % capacity;
+				if (!_entries[idx].IsOccupied || _entries[idx].Key == key)
 					return _entries[idx];
 			}
-			printf("map miss (%d, %d)\n", key.X, key.Y);
+			printf("CuMap miss\n", key.X, key.Y);
 			return _entries[idx];
 		}
 	};

@@ -1,4 +1,5 @@
 #pragma once
+#include "misc/CuList.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
@@ -13,7 +14,8 @@ namespace cupat
 		V2Int TargCell;
 
 		bool IsNewPathRequested;
-		int PathCellIdx;
-		void* DPath;
+		int PathIdx;
+		void* Path;
+		int PathStepIdx;
 	};
 }

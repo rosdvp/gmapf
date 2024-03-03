@@ -11,10 +11,9 @@ namespace cupat
 	{
 		Cum<CuMatrix<int>> Map;
 		Cum<CuList<Agent>> Agents;
-		int AgentId;
 	};
 
-	struct __align__(16) AStarNode
+	struct __align__(16) AStarNodeCpu
 	{
 		V2Int Cell;
 		V2Int PrevCell;
@@ -22,8 +21,20 @@ namespace cupat
 		float G;
 	};
 
+	struct CpuPriorityQueueComparer
+	{
+		bool operator()(const AStarNodeCpu& a, const AStarNodeCpu& b)
+		{
+			return a.F > b.F;
+		}
+	};
 
-	inline void CpuFindPathAStar(CpuFindPathAStarInput input)
+	inline void CpuFind(
+		Agent& agent,
+		CuMatrix<int> map,
+		std::unordered_map<V2Int, AStarNodeCpu> visited,
+		std::priority_queue<AStarNodeCpu, std::vector<AStarNodeCpu>, CpuPriorityQueueComparer>& frontier
+		)
 	{
 		constexpr float heuristicK = 1.0f;
 		V2Int neibsCellsDeltas[4] =
@@ -34,24 +45,7 @@ namespace cupat
 			{0, 1},
 		};
 
-		int expandedNodesCount = 1;
-
-		auto map = input.Map.H(0);
-		Agent& agent = input.Agents.H(0).At(input.AgentId);
-
-		std::unordered_map<V2Int, AStarNode> visited;
-
-		struct Comparer
-		{
-			bool operator()(const AStarNode& a, const AStarNode& b)
-			{
-				return a.F > b.F;
-			}
-		} comparer;
-		std::priority_queue<AStarNode, std::vector<AStarNode>, Comparer> frontier(comparer);
-
-
-		AStarNode start;
+		AStarNodeCpu start;
 		start.Cell = agent.TargCell;
 		start.F = V2Int::DistSqr(agent.CurrCell, agent.TargCell) * heuristicK;
 		start.G = 0;
@@ -72,7 +66,7 @@ namespace cupat
 				if (!map.IsValid(neibCell) || map.At(neibCell) != 0)
 					continue;
 
-				AStarNode neib;
+				AStarNodeCpu neib;
 				neib.Cell = neibCell;
 				neib.PrevCell = curr.Cell;
 				neib.G = curr.G + 1;
@@ -82,7 +76,6 @@ namespace cupat
 				{
 					visited[neibCell] = neib;
 					frontier.push(neib);
-					expandedNodesCount += 1;
 				}
 
 				if (neibCell == agent.CurrCell)
@@ -99,16 +92,37 @@ namespace cupat
 			return;
 		}
 
-		printf("expanded nodes: %d\n", expandedNodesCount);
-		printf("path:\n");
+		//printf("path:\n");
 
 		V2Int iter = agent.CurrCell;
 		do
 		{
 			iter = visited[visited[iter].PrevCell].Cell;
-			printf("(%d, %d)\n", iter.X, iter.Y);
+			//printf("(%d, %d)\n", iter.X, iter.Y);
 		} while (iter != agent.TargCell);
 
-		printf("----------\n");
+		//printf("----------\n");
+	}
+
+	inline void CpuFindPathAStar(CpuFindPathAStarInput input)
+	{
+		auto map = input.Map.H(0);
+		auto agents = input.Agents.H(0);
+
+		std::unordered_map<V2Int, AStarNodeCpu> visited;
+
+		CpuPriorityQueueComparer comparer;
+
+		for (int i = 0; i < agents.Count(); i++)
+		{
+			visited.erase(visited.begin(), visited.end());
+			std::priority_queue<AStarNodeCpu, std::vector<AStarNodeCpu>, CpuPriorityQueueComparer> frontier(comparer);
+			CpuFind(
+				agents.At(i),
+				map,
+				visited,
+				frontier
+			);
+		}
 	}
 }

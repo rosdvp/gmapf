@@ -9,7 +9,7 @@ namespace cupat
 	{
 	public:
 
-		__host__ __device__ CuQueue(void* ptr)
+		__host__ __device__ explicit CuQueue(void* ptr)
 		{
 			auto p = static_cast<char*>(ptr);
 			_capacity = reinterpret_cast<int*>(p);
@@ -50,6 +50,11 @@ namespace cupat
 			assert(*_count > 0);
 			*_count -= 1;
 			return _data[*_count];
+		}
+
+		__host__ __device__ void RemoveAll()
+		{
+			*_count = 0;
 		}
 
 		__host__ __device__ static size_t EvalSize(int capacity)

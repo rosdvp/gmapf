@@ -10,8 +10,8 @@ void TestThread()
 	config.MapCountX = 100;
 	config.MapCountY = 100;
 	config.MapCellSize = 10;
-	config.AgentsCount = 1;
-	config.AgentSpeed = 1;
+	config.AgentsCount = 100;
+	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
 
 	cupat::Sim sim;
@@ -19,7 +19,7 @@ void TestThread()
 
 	for (int i = 0; i < config.AgentsCount; i++)
 	{
-		sim.SetAgentInitialPos(i, { static_cast<float>(i), 0 });
+		sim.SetAgentInitialPos(i, { static_cast<float>(i * 5), 0 });
 		sim.SetAgentTargPos(i, { static_cast<float>(i), 900 });
 	}
 

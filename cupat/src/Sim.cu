@@ -3,10 +3,10 @@
 #include <chrono>
 #include <iostream>
 
+#include "PathFinder.h"
 #include "../include/Helpers.h"
 #include "../include/kernels/KernelProcessAgent.h"
 #include "../include/kernels/PathAStarCPU.h"
-#include "../include/kernels/PathAStarMixed.h"
 
 using namespace cupat;
 
@@ -54,7 +54,6 @@ void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 	agent.TargPos = targPos;
 	agent.TargCell = PosToCell(targPos);
 	agent.IsNewPathRequested = true;
-	agent.PathCellIdx = 0;
 }
 
 void Sim::SetObstacle(const V2Int& cell)
@@ -75,14 +74,17 @@ bool Sim::DoStep(float deltaTime)
 	CpuFindPathAStarInput cpuInp;
 	cpuInp.Map = _map;
 	cpuInp.Agents = _agents;
-	cpuInp.AgentId = 0;
 
-	int threadsCount = 1;
-
-	FindPathAStarMixedInput mixedInp;
-	mixedInp.Map = _map;
-	mixedInp.Agents = _agents;
-	mixedInp.AgentId = 0;
+	PathFinder finder;
+	finder.Init(
+		_map,
+		_agents,
+		100,
+		128,
+		600,
+		32,
+		1
+	);
 
 	auto time0 = std::chrono::high_resolution_clock::now();
 
@@ -90,9 +92,10 @@ bool Sim::DoStep(float deltaTime)
 	{
 		//KernelFindPathAStar<<<1, 5>>>(inp);
 		//KernelFindPathAStarMono<<<1, 1 >>>(inp);
-		FindPathAStarMixed(mixedInp);
+		//FindPathAStarMixed(inp);
 		//CpuFindPathAStar(cpuInp);
 		//cudaDeviceSynchronize();
+		finder.Find();
 	}
 
 	auto time1 = std::chrono::high_resolution_clock::now();

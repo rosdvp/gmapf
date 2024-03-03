@@ -97,14 +97,15 @@
     <ClInclude Include="cupat\include\Agent.h" />
     <ClInclude Include="cupat\include\ConfigSim.h" />
     <ClInclude Include="cupat\include\Helpers.h" />
-    <ClInclude Include="cupat\include\kernels\PathAStarMixed.h" />
     <ClInclude Include="cupat\include\kernels\PathAStarCPU.h" />
     <ClInclude Include="cupat\include\misc\CuList.h" />
     <ClInclude Include="cupat\include\misc\Cum.h" />
-    <ClInclude Include="cupat\include\misc\CumMap.h" />
+    <ClInclude Include="cupat\include\misc\CuMap.h" />
     <ClInclude Include="cupat\include\misc\CuMatrix.h" />
+    <ClInclude Include="cupat\include\PathsStorage.h" />
     <ClInclude Include="cupat\include\misc\CuQueue.h" />
     <ClInclude Include="cupat\include\misc\V2Int.h" />
+    <ClInclude Include="cupat\include\PathFinder.h" />
     <ClInclude Include="cupat\include\Sim.h" />
     <ClInclude Include="cupat\include\misc\V2Float.h" />
     <ClInclude Include="cupat\include\kernels\KernelProcessAgent.h" />

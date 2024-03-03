@@ -10,12 +10,12 @@ namespace cupat
 	private:
 		struct Entry
 		{
-			int IsFilled;
+			int IsOccupied;
 			T Value;
 		};
 
 	public:
-		__host__ __device__ CuMatrix(void* ptr)
+		__host__ __device__ explicit CuMatrix(void* ptr)
 		{
 			auto p = static_cast<char*>(ptr);
 			_countX = reinterpret_cast<int*>(p);
@@ -32,12 +32,12 @@ namespace cupat
 
 			int count = countX * countY;
 			for (int i = 0; i < count; i++)
-				_entries[i].IsFilled = false;
+				_entries[i].IsOccupied = false;
 		}
 
 		__host__ __device__ bool Has(int idx) const
 		{
-			return _entries[idx].IsFilled == 1;
+			return _entries[idx].IsOccupied == 1;
 		}
 
 		__host__ __device__ bool Has(int x, int y) const
@@ -45,10 +45,15 @@ namespace cupat
 			return Has(GetIdx(x, y));
 		}
 
-		__device__ bool TryOccupy(int idx) const
+		__device__ bool TryOccupy(int idx)
 		{
-			int res = atomicExch(&(_entries[idx].IsFilled), 1);
+			int res = atomicExch(&(_entries[idx].IsOccupied), 1);
 			return res == 0;
+		}
+
+		__device__ void UnOccupy(int idx)
+		{
+			_entries[idx].IsOccupied = 0;
 		}
 
 		__host__ __device__ T& At(int idx)
