@@ -82,7 +82,7 @@ namespace cupat
 		queues.D(bid * threadsPerAgent + tid).RemoveAll();
 
 		auto visited = visiteds.D(bid);
-		for (int i = tid; i < visited.Count(); i++)
+		for (int i = tid; i < visited.Count(); i += threadsPerAgent)
 			visited.UnOccupy(i);
 
 		if (tid == 0 && bid == 0)
