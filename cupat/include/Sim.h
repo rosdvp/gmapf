@@ -28,7 +28,7 @@ namespace cupat
 
 		void SetObstacle(const V2Int& cell);
 
-		void Start();
+		void Start(bool isDebugSyncMode);
 
 		void DoStep(float deltaTime);
 		void DoStepOnlyFinder();
@@ -46,8 +46,12 @@ namespace cupat
 		Cum<CuMatrix<int>> _map;
 		Cum<CuList<Agent>> _agents;
 
-		PathFinder* _pathFinder;
-		AgentsMover* _agentsMover;
+		PathFinder* _pathFinder = nullptr;
+		AgentsMover* _agentsMover = nullptr;
+
+		float _debugDurStep = 0;
+		float _debugDurStepMax = 0;
+		int _debugStepsCount = 0;
 
 
 		V2Int PosToCell(const V2Float& pos) const;

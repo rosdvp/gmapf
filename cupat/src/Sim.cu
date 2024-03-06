@@ -12,6 +12,9 @@ using namespace cupat;
 
 Sim::~Sim()
 {
+	delete _pathFinder;
+	delete _agentsMover;
+
 	_map.HFree();
 	_map.DFree();
 
@@ -71,7 +74,7 @@ void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)
 	Agent& agent = _agents.H(0).At(agentId);
 	agent.Path = cumPath.DPtr(0);
 	agent.IsNewPathRequested = false;
-	agent.PathIdx = 0;
+	agent.PathStepIdx = 0;
 	agent.PathNextCell = path[0];
 }
 
@@ -80,7 +83,7 @@ void Sim::SetObstacle(const V2Int& cell)
 	_map.H(0).At(cell) = -1;
 }
 
-void Sim::Start()
+void Sim::Start(bool isDebugSyncMode)
 {
 	_map.CopyToDevice();
 	TryCatchCudaError("allocate map");
@@ -88,16 +91,20 @@ void Sim::Start()
 	TryCatchCudaError("allocate agents");
 
 	_pathFinder = new PathFinder();
+	_pathFinder->DebugSyncMode = isDebugSyncMode;
 	_pathFinder->Init(
 		_map,
 		_agents,
 		_config.PathFinderParallelAgents,
 		_config.PathFinderThreadsPerAgents,
 		_config.PathFinderEachQueueCapacity,
-		_config.PathFinderHeuristicK
+		_config.PathFinderHeuristicK,
+		_config.PathStorageBinsK,
+		_config.PathStorageBinSize
 	);
 
 	_agentsMover = new AgentsMover();
+	_agentsMover->DebugSyncMode = isDebugSyncMode;
 	_agentsMover->Init(
 		_mapDesc,
 		_map,
@@ -110,6 +117,8 @@ void Sim::Start()
 
 void Sim::DoStep(float deltaTime)
 {
+	TIME_STAMP(tStart);
+
 	_pathFinder->AsyncPreFind();
 	_agentsMover->AsyncPreMove();
 
@@ -126,19 +135,33 @@ void Sim::DoStep(float deltaTime)
 	_agentsMover->PostMove();
 
 	_agents.CopyToHost();
+
+	auto step = TIME_DIFF_MS(tStart);
+	_debugDurStep += step;
+	_debugDurStepMax = std::max(step, _debugDurStepMax);
+	_debugStepsCount += 1;
 }
 
 void Sim::DoStepOnlyFinder()
 {
+	TIME_STAMP(tStart);
+
 	_pathFinder->AsyncPreFind();
 	_pathFinder->Sync();
 	_pathFinder->AsyncFind();
 	_pathFinder->Sync();
 	_pathFinder->PostFind();
+
+	auto step = TIME_DIFF_MS(tStart);
+	_debugDurStep += step;
+	_debugDurStepMax = std::max(step, _debugDurStepMax);
+	_debugStepsCount += 1;
 }
 
 void Sim::DoStepOnlyMover(float deltaTime)
 {
+	TIME_STAMP(tStart);
+
 	_agentsMover->AsyncPreMove();
 	_agentsMover->Sync();
 	_agentsMover->AsyncMove(deltaTime);
@@ -146,6 +169,11 @@ void Sim::DoStepOnlyMover(float deltaTime)
 	_agentsMover->PostMove();
 
 	_agents.CopyToHost();
+
+	auto step = TIME_DIFF_MS(tStart);
+	_debugDurStep += step;
+	_debugDurStepMax = std::max(step, _debugDurStepMax);
+	_debugStepsCount += 1;
 }
 
 const V2Float& Sim::GetAgentPos(int agentId)
@@ -155,20 +183,30 @@ const V2Float& Sim::GetAgentPos(int agentId)
 
 void Sim::DebugDump() const
 {
+	printf("----------------------\n");
+
+	printf("sim step ms, avg: %f, max: %f, sum: %f\n", _debugDurStep / _debugStepsCount, _debugDurStepMax, _debugDurStep);
+
+	printf("\n");
+
 	int count = _pathFinder->DebugRecordsCount;
 	printf("path finder:\n");
-	printf("clear collections ms: %f (%f)\n", _pathFinder->DebugDurClearCollections / count, _pathFinder->DebugDurClearCollections);
-	printf("prepare search ms: %f (%f)\n", _pathFinder->DebugDurPrepareSearch / count, _pathFinder->DebugDurPrepareSearch);
-	printf("search ms: %f (%f)\n", _pathFinder->DebugDurSearch / count, _pathFinder->DebugDurSearch);
-	printf("build paths ms: %f (%f)\n", _pathFinder->DebugDurBuildPaths / count, _pathFinder->DebugDurBuildPaths);
-	printf("attach paths ms: %f (%f)\n", _pathFinder->DebugDurAttachPaths / count, _pathFinder->DebugDurAttachPaths);
+	printf("clear collections ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurClearCollections / count, _pathFinder->DebugDurClearCollectionsMax, _pathFinder->DebugDurClearCollections);
+	printf("prepare search ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurPrepareSearch / count, _pathFinder->DebugDurPrepareSearchMax,  _pathFinder->DebugDurPrepareSearch);
+	printf("search ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurSearch / count, _pathFinder->DebugDurSearchMax, _pathFinder->DebugDurSearch);
+	printf("build paths ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurBuildPaths / count, _pathFinder->DebugDurBuildPathsMax, _pathFinder->DebugDurBuildPaths);
+	printf("attach paths ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurAttachPaths / count, _pathFinder->DebugDurAttachPathsMax,  _pathFinder->DebugDurAttachPaths);
+
+	printf("\n");
 
 	count = _agentsMover->DebugRecordsCount;
 	printf("agents mover:\n");
-	printf("find moving agents ms: %f (%f)\n", _agentsMover->DebugDurFindAgents / count, _agentsMover->DebugDurFindAgents);
-	printf("move agents ms: %f (%f)\n", _agentsMover->DebugDurMoveAgents / count, _agentsMover->DebugDurMoveAgents);
-	printf("resolve collisions ms: %f (%f)\n", _agentsMover->DebugDurResolveCollisions / count, _agentsMover->DebugDurResolveCollisions);
-	printf("update cells ms: %f (%f)\n", _agentsMover->DebugDurUpdateCell / count, _agentsMover->DebugDurUpdateCell);
+	printf("find moving agents ms, avg: %f max: %f, sum: %f\n", _agentsMover->DebugDurFindAgents / count, _agentsMover->DebugDurFindAgentsMax, _agentsMover->DebugDurFindAgents);
+	printf("move agents ms, avg: %f max: %f, sum: %f\n", _agentsMover->DebugDurMoveAgents / count, _agentsMover->DebugDurMoveAgentsMax, _agentsMover->DebugDurMoveAgents);
+	printf("resolve collisions ms, avg: %f max: %f, sum: %f\n", _agentsMover->DebugDurResolveCollisions / count, _agentsMover->DebugDurResolveCollisionsMax, _agentsMover->DebugDurResolveCollisions);
+	printf("update cells ms, avg: %f max: %f, sum: %f\n", _agentsMover->DebugDurUpdateCell / count, _agentsMover->DebugDurUpdateCellMax, _agentsMover->DebugDurUpdateCell);
+
+	printf("----------------------\n");
 }
 
 V2Int Sim::PosToCell(const V2Float& pos) const

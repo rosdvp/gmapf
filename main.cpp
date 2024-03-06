@@ -17,6 +17,8 @@ void TestFinder()
 	config.PathFinderThreadsPerAgents = 128;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
+	config.PathStorageBinsK = 2;
+	config.PathStorageBinSize = 16;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -29,7 +31,7 @@ void TestFinder()
 
 	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
 
-	sim.Start();
+	sim.Start(false);
 	sim.DoStepOnlyFinder();
 
 	sim.DebugDump();
@@ -48,6 +50,8 @@ void TestMover()
 	config.PathFinderThreadsPerAgents = 128;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
+	config.PathStorageBinsK = 2;
+	config.PathStorageBinSize = 16;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -76,7 +80,7 @@ void TestMover()
 		}
 	);
 
-	sim.Start();
+	sim.Start(false);
 
 	int stepsCount = 100;
 	for (int i = 0; i < stepsCount; i++)
@@ -94,10 +98,54 @@ void TestMover()
 	sim.DebugDump();
 }
 
+void TestFull()
+{
+	cupat::ConfigSim config;
+	config.MapCountX = 100;
+	config.MapCountY = 100;
+	config.MapCellSize = 10;
+	config.AgentsCount = 128;
+	config.AgentSpeed = 1;
+	config.AgentRadius = 2;
+	config.PathFinderParallelAgents = 128;
+	config.PathFinderThreadsPerAgents = 128;
+	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderHeuristicK = 1;
+	config.PathStorageBinsK = 4;
+	config.PathStorageBinSize = 16;
+
+	cupat::Sim sim;
+	sim.Init(config);
+
+	for (int i = 0; i < config.AgentsCount; i++)
+	{
+		sim.SetAgentInitialPos(i, { static_cast<float>(i * 5), 0 });
+		sim.SetAgentTargPos(i, { static_cast<float>(i * 5), 50 });
+	}
+
+	sim.Start(false);
+
+	int stepsCount = 100;
+	for (int i = 0; i < stepsCount; i++)
+	{
+		sim.DoStep(1);
+	}
+
+	std::cout << "agents final poses:" << std::endl;
+	for (int i = 0; i < config.AgentsCount; i++)
+	{
+		std::cout << sim.GetAgentPos(i) << std::endl;
+	}
+
+	sim.DebugDump();
+}
+
+
 int main()
 {
-	TestFinder();
+	//TestFinder();
 	//TestMover();
+	TestFull();
 
 	std::cout << "test done" << std::endl;
 	return 0;

@@ -16,5 +16,8 @@ namespace cupat
 		int PathFinderThreadsPerAgents;
 		int PathFinderEachQueueCapacity;
 		float PathFinderHeuristicK;
+
+		int PathStorageBinsK;
+		int PathStorageBinSize;
 	};
 }

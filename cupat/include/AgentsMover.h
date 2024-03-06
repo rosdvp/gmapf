@@ -144,23 +144,29 @@ namespace cupat
 		if (agent.CurrCell == agent.PathNextCell)
 		{
 			CuList<V2Int> path(agent.Path);
-			agent.PathIdx += 1;
-			if (agent.PathIdx == path.Count())
+			agent.PathStepIdx += 1;
+			if (agent.PathStepIdx == path.Count())
 			{
 				agent.IsTargetReached = true;
 				return;
 			}
-			agent.PathNextCell = path.At(agent.PathIdx);
+			agent.PathNextCell = path.At(agent.PathStepIdx);
 		}
 	}
 
 	class AgentsMover
 	{
 	public:
+		bool DebugSyncMode = false;
+
 		float DebugDurFindAgents = 0;
+		float DebugDurFindAgentsMax = 0;
 		float DebugDurMoveAgents = 0;
+		float DebugDurMoveAgentsMax = 0;
 		float DebugDurResolveCollisions = 0;
+		float DebugDurResolveCollisionsMax = 0;
 		float DebugDurUpdateCell = 0;
+		float DebugDurUpdateCellMax = 0;
 		int DebugRecordsCount = 0;
 
 
@@ -214,11 +220,15 @@ namespace cupat
 
 		void AsyncPreMove()
 		{
-			KernelClearCollections << <1, 1, 0, _stream >> > (
+			KernelClearCollections<<<1, 1, 0, _stream>>> (
 				_procAgentsIndices.D(0),
 				_dProcAgentsCount
 			);
+			if (DebugSyncMode)
+				CudaCatch();
 			FindMovingAgents();
+			if (DebugSyncMode)
+				CudaCatch();
 		}
 
 		void AsyncMove(float deltaTime)
@@ -227,20 +237,27 @@ namespace cupat
 				return;
 
 			MoveAgents(_moveSpeed * deltaTime);
+			if (DebugSyncMode)
+				CudaCatch();
 			ResolveCollisions();
+			if (DebugSyncMode)
+				CudaCatch();
 			UpdateCells();
+			if (DebugSyncMode)
+				CudaCatch();
 		}
 
 		void PostMove()
 		{
+			if (*_hProcAgentsCount == 0)
+				return;
+
 			DebugRecordDurs();
 		}
 
 		void Sync()
 		{
-			cudaStreamSynchronize(_stream);
-			if (TryCatchCudaError("kernel"))
-				throw std::exception();
+			CudaCheck(cudaStreamSynchronize(_stream), "agents mover");
 		}
 
 	private:
@@ -342,15 +359,19 @@ namespace cupat
 			float temp = 0;
 
 			cudaEventElapsedTime(&temp, _evFindAgentsStart, _evFindAgentsEnd);
+			DebugDurFindAgentsMax = std::max(temp, DebugDurFindAgentsMax);
 			DebugDurFindAgents += temp;
 
 			cudaEventElapsedTime(&temp, _evMoveAgentsStart, _evMoveAgentsEnd);
+			DebugDurMoveAgentsMax = std::max(temp, DebugDurMoveAgentsMax);
 			DebugDurMoveAgents += temp;
 
 			cudaEventElapsedTime(&temp, _evResolveCollisionsStart, _evResolveCollisionsEnd);
+			DebugDurResolveCollisionsMax = std::max(temp, DebugDurResolveCollisionsMax);
 			DebugDurResolveCollisions += temp;
 
 			cudaEventElapsedTime(&temp, _evUpdateCellsStart, _evUpdateCellsEnd);
+			DebugDurUpdateCellMax = std::max(temp, DebugDurUpdateCellMax);
 			DebugDurUpdateCell += temp;
 
 			DebugRecordsCount += 1;

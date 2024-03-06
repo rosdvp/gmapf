@@ -87,7 +87,31 @@ namespace cupat
 				}
 				if (!isSetFailed)
 				{
-					printf("path storage not enough space\n");
+					int filledCount = 0;
+					for (int i = startIdx; i <= endIdx; i++)
+					{
+						Path& path = _paths[i];
+						if (path.UsersCount > 0)
+							filledCount += 1;
+					}
+					printf("path storage not enough space for (%d, %d) -> (%d, %d), bin fill %d/%d\n",
+						start.X, start.Y,
+						target.X, target.Y,
+						filledCount, _pathsPerBin
+					);
+					for (int a = startIdx; a <= endIdx; a++)
+					{
+						Path& pA = _paths[a];
+						for (int b = startIdx; b <= endIdx; b++)
+						{
+							if (a == b)
+								continue;
+
+							Path& pB = _paths[b];
+							if (pA.Start == pB.Start && pA.Target == pB.Target)
+								printf("path storage duplicate detected\n");
+						}
+					}
 					break;
 				}
 			}
