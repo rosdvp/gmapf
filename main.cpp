@@ -4,7 +4,7 @@
 
 void PlaceObstacles(cupat::Sim& sim, int width, int height);
 
-void TestThread()
+void TestFinder()
 {
 	cupat::ConfigSim config;
 	config.MapCountX = 100;
@@ -13,6 +13,10 @@ void TestThread()
 	config.AgentsCount = 100;
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
+	config.PathFinderParallelAgents = 128;
+	config.PathFinderThreadsPerAgents = 128;
+	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderHeuristicK = 1;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -26,12 +30,59 @@ void TestThread()
 	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
 
 	sim.Start();
+	sim.DoStepOnlyFinder();
 
-	int stepsCount = 1;
+	sim.DebugDump();
+}
+
+void TestMover()
+{
+	cupat::ConfigSim config;
+	config.MapCountX = 100;
+	config.MapCountY = 100;
+	config.MapCellSize = 10;
+	config.AgentsCount = 2;
+	config.AgentSpeed = 1;
+	config.AgentRadius = 5;
+	config.PathFinderParallelAgents = 128;
+	config.PathFinderThreadsPerAgents = 128;
+	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderHeuristicK = 1;
+
+	cupat::Sim sim;
+	sim.Init(config);
+
+	sim.SetAgentInitialPos(0, { 10, 5 });
+	sim.SetAgentTargPos(0, { 10, 50});
+	sim.DebugSetAgentPath(0,
+		{
+			{1, 1},
+			{1, 2},
+			{1, 3},
+			{1, 4},
+			{1, 5},
+		}
+	);
+
+	sim.SetAgentInitialPos(1, { 10, 50 });
+	sim.SetAgentTargPos(1, { 10, 5 });
+	sim.DebugSetAgentPath(1,
+		{
+			{1, 4},
+			{1, 3},
+			{1, 2},
+			{1, 1},
+			{1, 0},
+		}
+	);
+
+	sim.Start();
+
+	int stepsCount = 100;
 	for (int i = 0; i < stepsCount; i++)
 	{
-		sim.DoStep(2);
-		std::cout << sim.GetAgentPos(0) << std::endl;
+		sim.DoStepOnlyMover(1);
+		std::cout << "0: " << sim.GetAgentPos(0) << ", 1: " << sim.GetAgentPos(1) << std::endl;
 	}
 
 	std::cout << "agents final poses:" << std::endl;
@@ -39,12 +90,14 @@ void TestThread()
 	{
 		std::cout << sim.GetAgentPos(i) << std::endl;
 	}
-}
 
+	sim.DebugDump();
+}
 
 int main()
 {
-	TestThread();
+	TestFinder();
+	//TestMover();
 
 	std::cout << "test done" << std::endl;
 	return 0;

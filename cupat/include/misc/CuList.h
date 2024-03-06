@@ -1,7 +1,6 @@
 #pragma once
 #include <cassert>
 #include <cuda_runtime_api.h>
-#include <crt/host_defines.h>
 
 namespace cupat
 {

@@ -1,8 +1,11 @@
 #pragma once
 
 #include "cuda_runtime.h"
+#include "math_constants.h"
 #include <cmath>
 #include <ostream>
+
+#include "V2Int.h"
 
 namespace cupat
 {
@@ -14,10 +17,33 @@ namespace cupat
 		__host__ __device__ V2Float() : X(0), Y(0) {}
 		__host__ __device__ V2Float(float x, float y) : X(x), Y(y) {}
 
+		__host__ __device__ V2Float(const V2Int& v) : X(v.X), Y(v.Y) {}
+
+
+		__host__ __device__ float GetLengthSqr() const
+		{
+			return X * X + Y * Y;
+		}
 
 		__host__ __device__ float GetLength() const
 		{
 			return sqrt(X * X + Y * Y);
+		}
+
+		__host__ __device__ V2Float GetNorm() const
+		{
+			float length = GetLength();
+			return { X / length, Y / length };
+		}
+
+		__host__ __device__ V2Float GetRotated(float angle) const
+		{
+			angle = angle * CUDART_PI_F / 180.0f;
+			float cs = cos(angle);
+			float sn = sin(angle);
+			float x = X * cs - Y * sn;
+			float y = X * sn + Y * cs;
+			return { x, y };
 		}
 
 
@@ -72,6 +98,7 @@ namespace cupat
 		{
 			return !(v1 == v2);
 		}
+
 
 		__host__ friend std::ostream& operator<<(std::ostream& os, const V2Float& v)
 		{

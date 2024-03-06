@@ -129,7 +129,7 @@ namespace cupat
 		}
 	}
 
-	__global__ void KernelFindPaths(
+	__global__ void KernelSearch(
 		float heuristicK,
 		CuMatrix<int> map,
 		CuList<PathRequest> requests,
@@ -314,12 +314,19 @@ namespace cupat
 	class PathFinder
 	{
 	public:
+		float DebugDurClearCollections = 0;
+		float DebugDurPrepareSearch = 0;
+		float DebugDurSearch = 0;
+		float DebugDurBuildPaths = 0;
+		float DebugDurAttachPaths = 0;
+		int DebugRecordsCount = 0;
+
+
 		void Init(
 			const Cum<CuMatrix<int>>& map,
 			const Cum<CuList<Agent>>& agents,
 			int parallelAgentsCount,
 			int threadsPerAgent,
-			int frontierCapacity,
 			int queueCapacity,
 			float heuristicK)
 		{
@@ -329,6 +336,8 @@ namespace cupat
 			_parallelAgentsCount = parallelAgentsCount;
 			_threadsPerAgent = threadsPerAgent;
 			_heuristicK = heuristicK;
+
+			int frontierCapacity = (threadsPerAgent+1) * 4;
 
 			_pathsStorage.DAlloc(_agents.H(0).Count() * 2, 16);
 
@@ -368,8 +377,8 @@ namespace cupat
 			cudaEventCreate(&_evClearCollectionsEnd);
 			cudaEventCreate(&_evPrepareSearchStart);
 			cudaEventCreate(&_evPrepareSearchEnd);
-			cudaEventCreate(&_evFindStart);
-			cudaEventCreate(&_evFindEnd);
+			cudaEventCreate(&_evSearchStart);
+			cudaEventCreate(&_evSearchEnd);
 			cudaEventCreate(&_evBuildPathsStart);
 			cudaEventCreate(&_evBuildPathsEnd);
 			cudaEventCreate(&_evAttachPathsStart);
@@ -393,50 +402,36 @@ namespace cupat
 			free(_hRequestsCount);
 		}
 
-
-		void Find()
+		void AsyncPreFind()
 		{
 			ClearCollections();
 			PrepareSearch();
-
-			cudaStreamSynchronize(_stream);
-
-			int requestsCount = *_hRequestsCount;
-
-			cudaEventRecord(_evFindStart, _stream);
-			KernelFindPaths<<<requestsCount, _threadsPerAgent, 0, _stream>>>(
-				_heuristicK,
-				_map.D(0),
-				_requests.D(0),
-				_visiteds,
-				_frontiers,
-				_queues,
-				_dFoundFlags
-			);
-			cudaEventRecord(_evFindEnd, _stream);
-
-			BuildPaths();
-			AttachPathsToAgents();
-
-			KernelCheckPaths<<<1, 1, 0, _stream>>>(_pathsStorage, _agents.D(0));
-
-			cudaStreamSynchronize(_stream);
-
-			float durClearCollections, durPrepareSearch, durFind, durBuildPaths, durAttachPaths;
-
-			cudaEventElapsedTime(&durClearCollections, _evClearCollectionsStart, _evClearCollectionsEnd);
-			cudaEventElapsedTime(&durPrepareSearch, _evPrepareSearchStart, _evPrepareSearchEnd);
-			cudaEventElapsedTime(&durFind, _evFindStart, _evFindEnd);
-			cudaEventElapsedTime(&durBuildPaths, _evBuildPathsStart, _evBuildPathsEnd);
-			cudaEventElapsedTime(&durAttachPaths, _evAttachPathsStart, _evAttachPathsEnd);
-
-			std::cout << "clear collections ms: " << durClearCollections << std::endl;
-			std::cout << "prepare search ms: " << durPrepareSearch << std::endl;
-			std::cout << "find paths ms: " << durFind << std::endl;
-			std::cout << "build paths ms: " << durBuildPaths << std::endl;
-			std::cout << "attach paths ms: " << durAttachPaths << std::endl;
 		}
 
+		void AsyncFind()
+		{
+			if (*_hRequestsCount == 0)
+				return;
+
+			Search();
+			BuildPaths();
+			AttachPathsToAgents();
+		}
+
+		void PostFind()
+		{
+			KernelCheckPaths<<<1, 1, 0, _stream>>> (_pathsStorage, _agents.D(0));
+			cudaStreamSynchronize(_stream);
+
+			DebugRecordDurs();
+		}
+
+		void Sync()
+		{
+			cudaStreamSynchronize(_stream);
+			if (TryCatchCudaError("kernel"))
+				throw std::exception();
+		}
 
 
 	private:
@@ -461,17 +456,17 @@ namespace cupat
 		int* _hRequestsCount = nullptr;
 		int* _dRequestsCount = nullptr;
 
-		cudaStream_t _stream;
-		cudaEvent_t _evClearCollectionsStart;
-		cudaEvent_t _evClearCollectionsEnd;
-		cudaEvent_t _evPrepareSearchStart;
-		cudaEvent_t _evPrepareSearchEnd;
-		cudaEvent_t _evFindStart;
-		cudaEvent_t _evFindEnd;
-		cudaEvent_t _evBuildPathsStart;
-		cudaEvent_t _evBuildPathsEnd;
-		cudaEvent_t _evAttachPathsStart;
-		cudaEvent_t _evAttachPathsEnd;
+		cudaStream_t _stream{};
+		cudaEvent_t _evClearCollectionsStart{};
+		cudaEvent_t _evClearCollectionsEnd{};
+		cudaEvent_t _evPrepareSearchStart{};
+		cudaEvent_t _evPrepareSearchEnd{};
+		cudaEvent_t _evSearchStart{};
+		cudaEvent_t _evSearchEnd{};
+		cudaEvent_t _evBuildPathsStart{};
+		cudaEvent_t _evBuildPathsEnd{};
+		cudaEvent_t _evAttachPathsStart{};
+		cudaEvent_t _evAttachPathsEnd{};
 
 
 		void ClearCollections()
@@ -495,6 +490,22 @@ namespace cupat
 			cudaEventRecord(_evClearCollectionsEnd);
 		}
 
+		void Search()
+		{
+			int requestsCount = *_hRequestsCount;
+
+			cudaEventRecord(_evSearchStart, _stream);
+			KernelSearch<<<requestsCount, _threadsPerAgent, 0, _stream>>>(
+				_heuristicK,
+				_map.D(0),
+				_requests.D(0),
+				_visiteds,
+				_frontiers,
+				_queues,
+				_dFoundFlags
+			);
+			cudaEventRecord(_evSearchEnd, _stream);
+		}
 
 		void PrepareSearch()
 		{
@@ -556,6 +567,28 @@ namespace cupat
 			);
 
 			cudaEventRecord(_evAttachPathsEnd);
+		}
+
+		void DebugRecordDurs()
+		{
+			float temp = 0;
+
+			cudaEventElapsedTime(&temp, _evClearCollectionsStart, _evClearCollectionsEnd);
+			DebugDurClearCollections += temp;
+
+			cudaEventElapsedTime(&temp, _evPrepareSearchStart, _evPrepareSearchEnd);
+			DebugDurPrepareSearch += temp;
+
+			cudaEventElapsedTime(&temp, _evSearchStart, _evSearchEnd);
+			DebugDurSearch += temp;
+
+			cudaEventElapsedTime(&temp, _evBuildPathsStart, _evBuildPathsEnd);
+			DebugDurBuildPaths += temp;
+
+			cudaEventElapsedTime(&temp, _evAttachPathsStart, _evAttachPathsEnd);
+			DebugDurAttachPaths += temp;
+
+			DebugRecordsCount += 1;
 		}
 	};
 }

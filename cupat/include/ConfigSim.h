@@ -11,5 +11,10 @@ namespace cupat
 		int AgentsCount;
 		float AgentRadius;
 		float AgentSpeed;
+
+		int PathFinderParallelAgents;
+		int PathFinderThreadsPerAgents;
+		int PathFinderEachQueueCapacity;
+		float PathFinderHeuristicK;
 	};
 }

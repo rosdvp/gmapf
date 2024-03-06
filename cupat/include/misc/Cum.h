@@ -79,6 +79,12 @@ namespace cupat
 			return T(_device + idx * _entrySize);
 		}
 
+		__host__ __device__ void* DPtr(int idx)
+		{
+			assert(idx < _entriesCount);
+			return _device + idx * _entrySize;
+		}
+
 	private:
 		int _entriesCount = 0;
 		size_t _entrySize = 0;

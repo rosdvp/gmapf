@@ -13,21 +13,6 @@ namespace cupat
 		__host__ __device__ V2Int(): X(0), Y(0) {}
 		__host__ __device__ V2Int(int x, int y) : X(x), Y(y) {}
 
-		__host__ __device__ V2Int(const V2Int& v) : X(v.X), Y(v.Y) {}
-		__host__ __device__ V2Int(V2Int&& v) noexcept : X(v.X), Y(v.Y) {}
-		__host__ __device__ V2Int& operator=(const V2Int& v)
-		{
-			X = v.X;
-			Y = v.Y;
-			return *this;
-		}
-		__host__ __device__ V2Int& operator=(V2Int&& v) noexcept
-		{
-			X = v.X;
-			Y = v.Y;
-			return *this;
-		}
-
 
 		__host__ __device__ static float DistSqr(const V2Int& v1, const V2Int& v2)
 		{
@@ -64,18 +49,9 @@ namespace cupat
 			return v1.X != v2.X || v1.Y != v2.Y;
 		}
 
-		__device__ volatile V2Int& operator=(const V2Int& v) volatile
+		__host__ __device__ friend V2Int operator-(const V2Int& v1, const V2Int& v2)
 		{
-			X = v.X;
-			Y = v.Y;
-			return *this;
-		}
-
-		__device__ V2Int& operator=(const volatile V2Int& v)
-		{
-			X = v.X;
-			Y = v.Y;
-			return *this;
+			return { v1.X - v2.X, v1.Y - v2.Y };
 		}
 	};
 }

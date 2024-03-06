@@ -90,14 +90,15 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="cupat\src\kernels\KernelProcessAgent.cu" />
     <CudaCompile Include="cupat\src\Sim.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cupat\include\Agent.h" />
+    <ClInclude Include="cupat\include\AgentsMover.h" />
     <ClInclude Include="cupat\include\ConfigSim.h" />
     <ClInclude Include="cupat\include\Helpers.h" />
-    <ClInclude Include="cupat\include\kernels\PathAStarCPU.h" />
+    <ClInclude Include="cupat\include\MapDesc.h" />
+    <ClInclude Include="cupat\include\PathAStarCPU.h" />
     <ClInclude Include="cupat\include\misc\CuList.h" />
     <ClInclude Include="cupat\include\misc\Cum.h" />
     <ClInclude Include="cupat\include\misc\CuMap.h" />
@@ -108,7 +109,6 @@
     <ClInclude Include="cupat\include\PathFinder.h" />
     <ClInclude Include="cupat\include\Sim.h" />
     <ClInclude Include="cupat\include\misc\V2Float.h" />
-    <ClInclude Include="cupat\include\kernels\KernelProcessAgent.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
