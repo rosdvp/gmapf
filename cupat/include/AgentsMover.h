@@ -71,6 +71,8 @@ namespace cupat
 	}
 
 	__global__ void KernelResolveCollisions(
+		MapDesc mapDesc,
+		CuMatrix<int> map,
 		CuList<Agent> agents,
 		float collisionDistSqr,
 		float collisionDist)
@@ -120,7 +122,9 @@ namespace cupat
 		V2Float avoidStep(shX / shCount, shY / shCount);
 		avoidStep = avoidStep.GetRotated(10);
 
-		agent.CurrPos += avoidStep;
+		V2Float newPos = agent.CurrPos + avoidStep;
+		if (mapDesc.IsValidPos(newPos) && map.At(mapDesc.PosToCell(newPos)) == 0)
+			agent.CurrPos += avoidStep;
 
 		//printf("avoid step (%f, %f)\n", avoidStep.X, avoidStep.Y);
 	}
@@ -333,6 +337,8 @@ namespace cupat
 			int threadsPerBlock = 128;
 
 			KernelResolveCollisions<<<blocksCount, threadsPerBlock, 0, _stream>>>(
+				_mapDesc,
+				_map.D(0),
 				_agents.D(0),
 				_collisionDistSqr,
 				_collisionDist

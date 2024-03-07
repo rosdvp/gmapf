@@ -234,6 +234,9 @@ namespace cupat
 				}
 			}
 
+			int isAnyQueueNotEmpty = __syncthreads_or(queue.Count());
+			if (isAnyQueueNotEmpty == 0)
+				return;
 			__syncthreads();
 			if (tid == 0)
 				frontier.RemoveAll();
@@ -254,7 +257,7 @@ namespace cupat
 		if (foundFlags[tid] == false)
 		{
 			//TODO set path usage to zero
-			printf("path not found");
+			printf("path not found\n");
 			return;
 		}
 
@@ -301,7 +304,10 @@ namespace cupat
 		agent.IsNewPathRequested = false;
 		agent.Path = pathsStorage.GetUsingPath(agent.PathIdx);
 		agent.PathStepIdx = 0;
-		agent.PathNextCell = CuList<V2Int>(agent.Path).At(0);
+		if (agent.Path == nullptr)
+			agent.IsTargetReached = true;
+		else
+			agent.PathNextCell = CuList<V2Int>(agent.Path).At(0);
 	}
 
 

@@ -29,8 +29,10 @@ void TestFinder()
 	}
 
 	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
+	//for (int x = 0; x < config.MapCountX; x++)
+	//	sim.SetObstacle({ x, 50});
 
-	sim.Start(false);
+	sim.Start(true);
 	sim.DoStepOnlyFinder();
 
 	sim.DebugDump();
@@ -140,9 +142,9 @@ void TestFull()
 
 int main()
 {
-	//TestFinder();
+	TestFinder();
 	//TestMover();
-	TestFull();
+	//TestFull();
 
 	std::cout << "test done" << std::endl;
 	return 0;

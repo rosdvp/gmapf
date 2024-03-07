@@ -62,18 +62,28 @@ void Sim::SetAgentInitialPos(int agentId, const V2Float& currPos)
 	agent.CurrPos = currPos;
 	agent.CurrCell = _mapDesc.PosToCell(currPos);
 	agent.IsTargetReached = true;
+
+	if (!_map->H(0).IsValid(agent.CurrCell))
+		throw std::exception(("initial cell " + agent.CurrCell.ToString() + " is invalid").c_str());
+	if (_map->H(0).At(agent.CurrCell) != 0)
+		throw std::exception(("initial cell " + agent.CurrCell.ToString() + " is busy").c_str());
 }
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
 	if (!_mapDesc.IsValidPos(targPos))
-		throw std::exception(("initial pos " + targPos.ToString() + " is invalid").c_str());
+		throw std::exception(("target pos " + targPos.ToString() + " is invalid").c_str());
 
 	Agent& agent = _agents->H(0).At(agentId);
 	agent.TargPos = targPos;
 	agent.TargCell = _mapDesc.PosToCell(targPos);
 	agent.IsNewPathRequested = true;
 	agent.IsTargetReached = false;
+
+	if (!_map->H(0).IsValid(agent.CurrCell))
+		throw std::exception(("target cell " + agent.TargCell.ToString() + " is invalid").c_str());
+	if (_map->H(0).At(agent.CurrCell) != 0)
+		throw std::exception(("target cell " + agent.TargCell.ToString() + " is busy").c_str());
 }
 
 void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)

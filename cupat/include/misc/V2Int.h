@@ -66,6 +66,11 @@ namespace cupat
 		{
 			return { v1.X - v2.X, v1.Y - v2.Y };
 		}
+
+		__host__ std::string ToString() const
+		{
+			return "(" + std::to_string(X) + ", " + std::to_string(Y) + ")";
+		}
 	};
 }
 
