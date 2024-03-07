@@ -13,29 +13,9 @@
 
 using namespace cupat;
 
-Sim::~Sim()
-{
-	delete _pathFinder;
-	delete _agentsMover;
-
-	_map->HFree();
-	_map->DFree();
-	delete _map;
-
-	_agents->HFree();
-	_agents->DFree();
-	delete _agents;
-
-	std::cout << "[cupat] sim destroyed" << std::endl;
-}
-
 void Sim::Init(const ConfigSim& config)
 {
 	_config = config;
-
-	cudaSetDevice(0);
-	TryCatchCudaError("set device");
-	cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
 
 	_mapDesc = MapDesc(config.MapCellSize, config.MapCountX, config.MapCountY);
 
@@ -51,6 +31,28 @@ void Sim::Init(const ConfigSim& config)
 	auto hAgents = _agents->H(0);
 	for (int i = 0; i < config.AgentsCount; i++)
 		hAgents.Add({});
+}
+
+void Sim::Destroy()
+{
+	std::cout << "[cupat] sim destroying.." << std::endl;
+
+	CudaSyncAndCatch();
+
+	delete _agentsMover;
+	delete _pathFinder;
+
+	_map->HFree();
+	_map->DFree();
+	delete _map;
+
+	_agents->HFree();
+	_agents->DFree();
+	delete _agents;
+
+	CudaCatch();
+
+	std::cout << "[cupat] sim destroyed" << std::endl;
 }
 
 void Sim::SetAgentInitialPos(int agentId, const V2Float& currPos)
@@ -108,10 +110,16 @@ void Sim::SetObstacle(const V2Int& cell)
 
 void Sim::Start(bool isDebugSyncMode)
 {
+	cudaSetDevice(0);
+	CudaCatch();
+	cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
+	CudaCatch();
+
+	CudaCatch();
 	_map->CopyToDevice();
-	TryCatchCudaError("allocate map");
+	CudaCatch();
 	_agents->CopyToDevice();
-	TryCatchCudaError("allocate agents");
+	CudaCatch();
 
 	_pathFinder = new PathFinder();
 	_pathFinder->DebugSyncMode = isDebugSyncMode;

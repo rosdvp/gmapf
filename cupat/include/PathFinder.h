@@ -323,7 +323,7 @@ namespace cupat
 
 			int usersCount = pathsStorage.GetPathUsersCount(agent.PathIdx);
 
-			printf("agent %d path (idx %d, users %d):\n", agentIdx, agent.PathIdx, usersCount);
+			printf("agent %d path (idx %d, users %d, addr %p):\n", agentIdx, agent.PathIdx, usersCount, (void*)agent.Path);
 			
 			//void* p = pathsStorage.GetUsingPath(agent.PathIdx);
 			//CuList<V2Int> path(p);
@@ -422,6 +422,7 @@ namespace cupat
 		~PathFinder()
 		{
 			_pathsStorage.DFree();
+			CudaCatch();
 			_procAgentsIndices.DFree();
 			_requests.DFree();
 			_visiteds.DFree();
@@ -434,16 +435,18 @@ namespace cupat
 
 			free(_hProcAgentsCount);
 			free(_hRequestsCount);
+
+			CudaCatch();
 		}
 
 		void AsyncPreFind()
 		{
 			ClearCollections();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			PrepareSearch();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 		}
 
 		void AsyncFind()
@@ -453,13 +456,13 @@ namespace cupat
 
 			Search();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			BuildPaths();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			AttachPathsToAgents();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 		}
 
 		void PostFind()
@@ -467,12 +470,12 @@ namespace cupat
 			if (*_hRequestsCount == 0)
 				return;
 
-			//KernelCheckPaths<<<1, 1, 0, _stream>>>(
-			//	_pathsStorage, 
-			//	_agents.D(0), 
-			//	_procAgentsIndices.D(0)
-			//);
-			//CudaCheck(cudaStreamSynchronize(_stream), "path finder, check paths");
+			///KernelCheckPaths<<<1, 1, 0, _stream>>>(
+			///	_pathsStorage, 
+			///	_agents.D(0), 
+			///	_procAgentsIndices.D(0)
+			///);
+			///CudaCheck(cudaStreamSynchronize(_stream), "path finder, check paths");
 
 			DebugRecordDurs();
 		}

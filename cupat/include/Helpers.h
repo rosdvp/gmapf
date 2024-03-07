@@ -24,9 +24,21 @@ namespace cupat
 		throw std::exception();
 	}
 
-	inline void CudaCatch()
+	inline void CudaSyncAndCatch()
 	{
 		cudaDeviceSynchronize();
+		cudaError_t error = cudaGetLastError();
+		if (error == cudaSuccess)
+			return;
+
+		std::cout << "[cupat] cuda error" << std::endl;
+		std::cout << cudaGetErrorName(error) << std::endl;
+		std::cout << cudaGetErrorString(error) << std::endl;
+		throw std::exception();
+	}
+
+	inline void CudaCatch()
+	{
 		cudaError_t error = cudaGetLastError();
 		if (error == cudaSuccess)
 			return;

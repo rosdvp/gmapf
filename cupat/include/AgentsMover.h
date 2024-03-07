@@ -220,8 +220,11 @@ namespace cupat
 		{
 			_procAgentsIndices.DFree();
 
-			free(_hProcAgentsCount);
 			cudaFree(_dProcAgentsCount);
+
+			free(_hProcAgentsCount);
+
+			CudaCatch();
 		}
 
 		void AsyncPreMove()
@@ -231,10 +234,10 @@ namespace cupat
 				_dProcAgentsCount
 			);
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			FindMovingAgents();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 		}
 
 		void AsyncMove(float deltaTime)
@@ -244,13 +247,13 @@ namespace cupat
 
 			MoveAgents(_moveSpeed * deltaTime);
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			ResolveCollisions();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 			UpdateCells();
 			if (DebugSyncMode)
-				CudaCatch();
+				CudaSyncAndCatch();
 		}
 
 		void PostMove()

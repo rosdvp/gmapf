@@ -21,9 +21,9 @@ namespace cupat
 	class Sim
 	{
 	public:
-		~Sim();
-
 		void Init(const ConfigSim& config);
+
+		void Destroy();
 
 		void SetAgentInitialPos(int agentId, const V2Float& currPos);
 		void SetAgentTargPos(int agentId, const V2Float& targPos);

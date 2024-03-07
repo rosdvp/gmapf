@@ -2,10 +2,14 @@
 
 #include <cuda_runtime.h>
 
+#include "PathsStorage.h"
 #include "misc/V2Int.h"
 
 namespace cupat
 {
+	class PathsStorage;
+	__global__ static void KernelFreePaths(PathsStorage storage);
+
 	class PathsStorage
 	{
 		struct __align__(16) Path
@@ -27,6 +31,8 @@ namespace cupat
 		{
 			if (_paths == nullptr)
 				return;
+			KernelFreePaths<<<1, 1>>>(*this);
+			CudaSyncAndCatch();
 			cudaFree(_paths);
 			_paths = nullptr;
 		}
@@ -102,6 +108,8 @@ namespace cupat
 			for (int i = 0; i < _capacity; i++)
 			{
 				_paths[i].UsersCount = 0;
+				if (_paths[i].DPath != nullptr)
+					cudaFree(_paths[i].DPath);
 				_paths[i].DPath = nullptr;
 			}
 		}
@@ -124,4 +132,9 @@ namespace cupat
 			return seed;
 		}
 	};
+
+	__global__ static void KernelFreePaths(PathsStorage storage)
+	{
+		storage.RemoveAll();
+	}
 }

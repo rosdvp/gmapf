@@ -36,6 +36,8 @@ void TestFinder()
 	sim.DoStepOnlyFinder();
 
 	sim.DebugDump();
+
+	sim.Destroy();
 }
 
 void TestMover()
@@ -96,6 +98,7 @@ void TestMover()
 	}
 
 	sim.DebugDump();
+	sim.Destroy();
 }
 
 void TestFull()
@@ -137,6 +140,7 @@ void TestFull()
 	}
 
 	sim.DebugDump();
+	sim.Destroy();
 }
 
 
