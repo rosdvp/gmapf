@@ -172,8 +172,8 @@ namespace cupat
 
 		void Init(
 			const MapDesc& mapDesc,
-			Cum<CuMatrix<int>> map,
-			Cum<CuList<Agent>> agents,
+			const Cum<CuMatrix<int>>& map,
+			const Cum<CuList<Agent>>& agents,
 			float moveSpeed,
 			float agentRadius,
 			int parallelAgentsCount)

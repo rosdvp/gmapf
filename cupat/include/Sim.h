@@ -4,14 +4,17 @@
 #include "Agent.h"
 #include "ConfigSim.h"
 #include "MapDesc.h"
-#include "misc/CuList.h"
-#include "misc/Cum.h"
-#include "misc/CuMatrix.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
 namespace cupat
 {
+	template<typename T>
+	class Cum;
+	template<typename T>
+	class CuMatrix;
+	template<typename T>
+	class CuList;
 	class AgentsMover;
 	class PathFinder;
 
@@ -43,8 +46,8 @@ namespace cupat
 
 		MapDesc _mapDesc;
 
-		Cum<CuMatrix<int>> _map;
-		Cum<CuList<Agent>> _agents;
+		Cum<CuMatrix<int>>* _map = nullptr;
+		Cum<CuList<Agent>>* _agents = nullptr;
 
 		PathFinder* _pathFinder = nullptr;
 		AgentsMover* _agentsMover = nullptr;
