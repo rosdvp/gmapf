@@ -73,7 +73,8 @@ namespace cupat
 	__global__ void KernelResolveCollisions(
 		CuList<Agent> agents,
 		CuList<int> agentsIndices,
-		float collisionDistSqr)
+		float collisionDistSqr,
+		float collisionDist)
 	{
 		int tid = threadIdx.x;
 		int bid = blockIdx.x;
@@ -103,7 +104,9 @@ namespace cupat
 			float distSqr = delta.GetLengthSqr();
 			if (distSqr < collisionDistSqr)
 			{
-				delta = delta.GetNorm();
+				float dist = delta.GetLength();
+				float shift = collisionDist - dist;
+				delta = (delta / dist) * shift;
 				atomicAdd(&shX, delta.X);
 				atomicAdd(&shY, delta.Y);
 				atomicAdd(&shCount, 1);
@@ -117,7 +120,7 @@ namespace cupat
 			return;
 
 		V2Float avoidStep(shX / shCount, shY / shCount);
-		avoidStep = avoidStep.GetRotated(10).GetNorm();
+		avoidStep = avoidStep.GetRotated(10);
 
 		agent.CurrPos += avoidStep;
 
@@ -184,6 +187,7 @@ namespace cupat
 
 			_moveSpeed = moveSpeed;
 			_collisionDistSqr = (agentRadius * 2) * (agentRadius * 2);
+			_collisionDist = agentRadius * 2;
 
 			_procAgentsIndices.DAlloc(1, parallelAgentsCount);
 
@@ -264,6 +268,7 @@ namespace cupat
 		MapDesc _mapDesc;
 		float _moveSpeed = 0;
 		float _collisionDistSqr = 0;
+		float _collisionDist = 0;
 
 		Cum<CuMatrix<int>> _map;
 		Cum<CuList<Agent>> _agents;
@@ -332,7 +337,8 @@ namespace cupat
 			KernelResolveCollisions<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_agents.D(0),
 				_procAgentsIndices.D(0),
-				_collisionDistSqr
+				_collisionDistSqr,
+				_collisionDist
 			);
 
 			cudaEventRecord(_evResolveCollisionsEnd, _stream);
