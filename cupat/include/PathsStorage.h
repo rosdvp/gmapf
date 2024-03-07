@@ -119,8 +119,8 @@ namespace cupat
 		__device__ size_t GetHash(const V2Int& a, const V2Int& b)
 		{
 			size_t seed = 0;
-			seed ^= a.GetHash() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-			seed ^= b.GetHash() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			seed ^= a.GetHash1() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			seed ^= b.GetHash1() + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 			return seed;
 		}
 	};

@@ -551,9 +551,11 @@ namespace cupat
 		{
 			cudaEventRecord(_evPrepareSearchStart, _stream);
 
-			int threadsCount = 512;
+			int threadsCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
 			int blocksCount = threadsCount / threadsPerBlock;
+			if (blocksCount * threadsPerBlock < threadsCount)
+				blocksCount += 1;
 
 			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_pathsStorage,

@@ -37,7 +37,10 @@ namespace cupat
 				if (item.F > _data[idx].F)
 					break;
 
-			for (int i = *_count; i > idx; i--)
+			int count = *_count;
+			int capacity = *_capacity;
+			int last = count == capacity ? count - 1 : count;
+			for (int i = last; i > idx; i--)
 				_data[i] = _data[i - 1];
 
 			_data[idx] = item;
@@ -57,7 +60,7 @@ namespace cupat
 			*_count = 0;
 		}
 
-		__host__ __device__ static size_t EvalSize(int capacity)
+		__host__ __device__ static constexpr size_t EvalSize(int capacity)
 		{
 			return 8 + 8 + sizeof(T) * capacity;
 		}

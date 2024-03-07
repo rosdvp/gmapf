@@ -22,14 +22,27 @@ namespace cupat
 		}
 
 
-		__host__ __device__ size_t GetHash() const
+		__host__ __device__ size_t GetHash1() const
 		{
 			size_t seed = X;
 			seed = seed << 32;
 			seed = seed | Y;
-			//size_t seed = 0;
-			//seed ^= X + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-			//seed ^= Y + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			return seed;
+		}
+
+		__host__ __device__ size_t GetHash2() const
+		{
+			size_t seed = 0;
+			seed ^= X + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			seed ^= Y + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			return seed;
+		}
+
+		__host__ __device__ size_t GetHash3() const
+		{
+			size_t seed = X + Y;
+			seed ^= X + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			seed ^= Y + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 			return seed;
 		}
 
@@ -61,6 +74,6 @@ struct std::hash<cupat::V2Int>
 {
 	std::size_t operator()(const cupat::V2Int& k) const
 	{
-		return k.GetHash();
+		return k.GetHash1();
 	}
 };

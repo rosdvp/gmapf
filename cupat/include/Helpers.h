@@ -26,6 +26,7 @@ namespace cupat
 
 	inline void CudaCatch()
 	{
+		cudaDeviceSynchronize();
 		cudaError_t error = cudaGetLastError();
 		if (error == cudaSuccess)
 			return;

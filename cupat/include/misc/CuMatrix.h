@@ -104,7 +104,7 @@ namespace cupat
 		}
 
 
-		__host__ __device__ static size_t EvalSize(int countX, int countY)
+		__host__ __device__ static constexpr size_t EvalSize(int countX, int countY)
 		{
 			return 8 + 8 + sizeof(Entry) * countX * countY;
 		}

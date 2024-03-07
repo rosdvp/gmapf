@@ -59,7 +59,7 @@ namespace cupat
 			return *_capacity;
 		}
 
-		__host__ __device__ static size_t EvalSize(int capacity)
+		__host__ __device__ static constexpr size_t EvalSize(int capacity)
 		{
 			return 8 + 8 + sizeof(T) * capacity;
 		}
