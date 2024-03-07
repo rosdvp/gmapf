@@ -17,12 +17,10 @@ namespace cupat
 		};
 
 	public:
-		__host__ void DAlloc(int binsCount, int pathsPerBin)
+		__host__ void DAlloc(int capacity)
 		{
-			_binsCount = binsCount;
-			_pathsPerBin = pathsPerBin;
-
-			cudaMalloc(&_paths, sizeof(Path) * binsCount * pathsPerBin);
+			_capacity = capacity;
+			cudaMalloc(&_paths, sizeof(Path) * capacity);
 		}
 
 		__host__ void DFree()
@@ -50,16 +48,16 @@ namespace cupat
 
 		__device__ int TryUsePath(const V2Int& start, const V2Int& target, bool& outIsRequested)
 		{
-			int startIdx;
-			int endIdx;
-			FindBin(start, target, startIdx, endIdx);
+			int startIdx = FindStartIdx(start, target);
 
 			while (true)
 			{
 				bool isSetFailed = false;
-				for (int i = startIdx; i <= endIdx; i++)
+				for (int offset = 0; offset < _capacity; offset++)
 				{
-					Path& path = _paths[i];
+					int idx = (startIdx + offset) % _capacity;
+
+					Path& path = _paths[idx];
 
 					if (path.UsersCount == 0)
 					{
@@ -73,7 +71,7 @@ namespace cupat
 								path.DPath = nullptr;
 							}
 							outIsRequested = true;
-							return i;
+							return idx;
 						}
 						isSetFailed = true;
 						break;
@@ -82,36 +80,12 @@ namespace cupat
 					{
 						atomicAdd(&path.UsersCount, 1);
 						outIsRequested = false;
-						return i;
+						return idx;
 					}
 				}
 				if (!isSetFailed)
 				{
-					int filledCount = 0;
-					for (int i = startIdx; i <= endIdx; i++)
-					{
-						Path& path = _paths[i];
-						if (path.UsersCount > 0)
-							filledCount += 1;
-					}
-					printf("path storage not enough space for (%d, %d) -> (%d, %d), bin fill %d/%d\n",
-						start.X, start.Y,
-						target.X, target.Y,
-						filledCount, _pathsPerBin
-					);
-					for (int a = startIdx; a <= endIdx; a++)
-					{
-						Path& pA = _paths[a];
-						for (int b = startIdx; b <= endIdx; b++)
-						{
-							if (a == b)
-								continue;
-
-							Path& pB = _paths[b];
-							if (pA.Start == pB.Start && pA.Target == pB.Target)
-								printf("path storage duplicate detected\n");
-						}
-					}
+					printf("paths storage is full\n");
 					break;
 				}
 			}
@@ -125,7 +99,7 @@ namespace cupat
 
 		__device__ void RemoveAll()
 		{
-			for (int i = 0; i < _binsCount * _pathsPerBin; i++)
+			for (int i = 0; i < _capacity; i++)
 			{
 				_paths[i].UsersCount = 0;
 				_paths[i].DPath = nullptr;
@@ -133,17 +107,13 @@ namespace cupat
 		}
 
 	private:
-		int _binsCount = 0;
-		int _pathsPerBin = 0;
+		int _capacity = 0;
 		Path* _paths = nullptr;
 
-
-		__device__ void FindBin(const V2Int& start, const V2Int& target, int& outStartIdx, int& outEndIdx)
+		__device__ int FindStartIdx(const V2Int& start, const V2Int& target)
 		{
 			size_t hash = GetHash(start, target);
-			int binIdx = hash % _binsCount;
-			outStartIdx = binIdx * _pathsPerBin;
-			outEndIdx = outStartIdx + _pathsPerBin - 1;
+			return hash % _capacity;
 		}
 
 		__device__ size_t GetHash(const V2Int& a, const V2Int& b)

@@ -351,8 +351,7 @@ namespace cupat
 			int threadsPerAgent,
 			int queueCapacity,
 			float heuristicK,
-			int pathStorageBinsK,
-			int pathStorageBinSize)
+			int pathStorageCapacityK)
 		{
 			_map = map;
 			_agents = agents;
@@ -363,7 +362,7 @@ namespace cupat
 
 			int frontierCapacity = (threadsPerAgent+1) * 4;
 
-			_pathsStorage.DAlloc(_agents.H(0).Count() * pathStorageBinsK, pathStorageBinSize);
+			_pathsStorage.DAlloc(_agents.H(0).Count() * pathStorageCapacityK);
 
 			_procAgentsIndices.DAlloc(1, parallelAgentsCount);
 			_requests.DAlloc(1, parallelAgentsCount);

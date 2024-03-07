@@ -17,8 +17,7 @@ void TestFinder()
 	config.PathFinderThreadsPerAgents = 128;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageBinsK = 2;
-	config.PathStorageBinSize = 16;
+	config.PathStorageCapacityK = 2;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -50,8 +49,7 @@ void TestMover()
 	config.PathFinderThreadsPerAgents = 128;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageBinsK = 2;
-	config.PathStorageBinSize = 16;
+	config.PathStorageCapacityK = 2;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -111,8 +109,7 @@ void TestFull()
 	config.PathFinderThreadsPerAgents = 128;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageBinsK = 4;
-	config.PathStorageBinSize = 16;
+	config.PathStorageCapacityK = 4;
 
 	cupat::Sim sim;
 	sim.Init(config);

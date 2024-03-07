@@ -17,7 +17,6 @@ namespace cupat
 		int PathFinderEachQueueCapacity;
 		float PathFinderHeuristicK;
 
-		int PathStorageBinsK;
-		int PathStorageBinSize;
+		int PathStorageCapacityK;
 	};
 }
