@@ -55,17 +55,23 @@ void Sim::Init(const ConfigSim& config)
 
 void Sim::SetAgentInitialPos(int agentId, const V2Float& currPos)
 {
+	if (!_mapDesc.IsValidPos(currPos))
+		throw std::exception(("initial pos " + currPos.ToString() + " is invalid").c_str());
+
 	Agent& agent = _agents->H(0).At(agentId);
 	agent.CurrPos = currPos;
-	agent.CurrCell = PosToCell(currPos);
+	agent.CurrCell = _mapDesc.PosToCell(currPos);
 	agent.IsTargetReached = true;
 }
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
+	if (!_mapDesc.IsValidPos(targPos))
+		throw std::exception(("initial pos " + targPos.ToString() + " is invalid").c_str());
+
 	Agent& agent = _agents->H(0).At(agentId);
 	agent.TargPos = targPos;
-	agent.TargCell = PosToCell(targPos);
+	agent.TargCell = _mapDesc.PosToCell(targPos);
 	agent.IsNewPathRequested = true;
 	agent.IsTargetReached = false;
 }
@@ -213,11 +219,4 @@ void Sim::DebugDump() const
 	printf("update cells ms, avg: %f max: %f, sum: %f\n", _agentsMover->DebugDurUpdateCell / count, _agentsMover->DebugDurUpdateCellMax, _agentsMover->DebugDurUpdateCell);
 
 	printf("----------------------\n");
-}
-
-V2Int Sim::PosToCell(const V2Float& pos) const
-{
-	auto x = static_cast<int>(pos.X / _config.MapCellSize);
-	auto y = static_cast<int>(pos.Y / _config.MapCellSize);
-	return { x, y };
 }

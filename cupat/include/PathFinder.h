@@ -124,8 +124,13 @@ namespace cupat
 				continue;
 			}
 
+			int oldCount = atomicAdd(procAgentsCount, 1);
+			if (oldCount + 1 >= procAgentsIndices.Capacity())
+			{
+				*procAgentsCount = procAgentsIndices.Capacity();
+				return;
+			}
 			procAgentsIndices.AddAtomic(i);
-			atomicAdd(procAgentsCount, 1);
 
 			bool isPathRequested = false;
 			agent.PathIdx = pathsStorage.TryUsePath(agent.CurrCell, agent.TargCell, isPathRequested);
@@ -575,7 +580,7 @@ namespace cupat
 			if (blocksCount * threadsPerBlock < threadsCount)
 				blocksCount += 1;
 
-			KernelBuildPath<<<blocksCount, threadsCount, 0, _stream>>>(
+			KernelBuildPath<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_pathsStorage,
 				_requests.D(0),
 				_visiteds,

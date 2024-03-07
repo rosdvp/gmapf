@@ -55,8 +55,5 @@ namespace cupat
 		float _debugDurStep = 0;
 		float _debugDurStepMax = 0;
 		int _debugStepsCount = 0;
-
-
-		V2Int PosToCell(const V2Float& pos) const;
 	};
 }

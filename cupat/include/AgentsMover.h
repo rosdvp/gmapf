@@ -72,7 +72,6 @@ namespace cupat
 
 	__global__ void KernelResolveCollisions(
 		CuList<Agent> agents,
-		CuList<int> agentsIndices,
 		float collisionDistSqr,
 		float collisionDist)
 	{
@@ -80,8 +79,7 @@ namespace cupat
 		int bid = blockIdx.x;
 		int threadsCount = blockDim.x;
 
-		int agentIdx = agentsIndices.At(bid);
-		Agent& agent = agents.At(agentIdx);
+		Agent& agent = agents.At(bid);
 
 		__shared__ float shX;
 		__shared__ float shY;
@@ -96,7 +94,7 @@ namespace cupat
 
 		for (int i = tid; i < agents.Count(); i += threadsCount)
 		{
-			if (i == agentIdx)
+			if (i == bid)
 				continue;
 
 			Agent& other = agents.At(i);
@@ -331,12 +329,11 @@ namespace cupat
 		{
 			cudaEventRecord(_evResolveCollisionsStart, _stream);
 
-			int blocksCount = *_hProcAgentsCount;
+			int blocksCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
 
 			KernelResolveCollisions<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_agents.D(0),
-				_procAgentsIndices.D(0),
 				_collisionDistSqr,
 				_collisionDist
 			);
