@@ -3,9 +3,9 @@
 #include <chrono>
 #include <iostream>
 
-#include "AgentsMover.h"
-#include "PathAStarCPU.h"
-#include "PathFinder.h"
+#include "../include/AgentsMover.h"
+#include "../include/PathAStarCPU.h"
+#include "../include/PathFinder.h"
 #include "../include/Helpers.h"
 
 using namespace cupat;
