@@ -230,19 +230,18 @@ void Sim::DebugDump() const
 {
 	std::cout << "----------------------" << std::endl;
 
-
 	TIME_STD_OUT("sim step", _debugDurStepSum, _debugDurStepMax, _debugStepsCount);
 	TIME_STD_OUT("sim step pre", _debugDurStepPreSum, _debugDurStepPreMax, _debugStepsCount);
 	TIME_STD_OUT("sim step main", _debugDurStepMainSum, _debugDurStepMainMax, _debugStepsCount);
 	TIME_STD_OUT("sim step post", _debugDurStepPostSum, _debugDurStepPostMax, _debugStepsCount);
 	TIME_STD_OUT("sim step copy", _debugDurStepCopySum, _debugDurStepCopyMax, _debugStepsCount);
 
-	std::cout << std::endl << "path finder:" << std::endl;
+	std::cout << std::endl;
 
 	int count = _pathFinder->DebugRecordsCount;
 	printf("path finder:\n");
-	printf("clear collections ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurClearCollections / count, _pathFinder->DebugDurClearCollectionsMax, _pathFinder->DebugDurClearCollections);
 	printf("prepare search ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurPrepareSearch / count, _pathFinder->DebugDurPrepareSearchMax,  _pathFinder->DebugDurPrepareSearch);
+	printf("clear collections ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurClearCollections / count, _pathFinder->DebugDurClearCollectionsMax, _pathFinder->DebugDurClearCollections);
 	printf("search ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurSearch / count, _pathFinder->DebugDurSearchMax, _pathFinder->DebugDurSearch);
 	printf("build paths ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurBuildPaths / count, _pathFinder->DebugDurBuildPathsMax, _pathFinder->DebugDurBuildPaths);
 	printf("attach paths ms, avg: %f max: %f, sum: %f\n", _pathFinder->DebugDurAttachPaths / count, _pathFinder->DebugDurAttachPathsMax,  _pathFinder->DebugDurAttachPaths);

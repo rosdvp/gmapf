@@ -67,37 +67,36 @@ namespace cupat
 		}
 	}
 
+	__global__ void KernelClearRequestsAndProcAgents(
+		CuList<PathRequest> requests,
+		int* requestsCount,
+		CuList<int> procAgentsIndices,
+		int* procAgentsCount)
+	{
+		requests.RemoveAll();
+		*requestsCount = 0;
+		procAgentsIndices.RemoveAll();
+		*procAgentsCount = 0;
+	}
+
 	__global__ void KernelClearCollections(
 		Cum<CuMatrix<AStarNode>> visiteds,
-		Cum<CuQueue<AStarNode>> queues,
-		CuList<AStarNode> frontier,
-		CuList<int> agentsIndices,
-		CuList<PathRequest> requests,
-		bool* foundFlags,
-		int* procAgentsCount,
-		int* requestsCount)
+		Cum<CuList<AStarNode>> frontiers,
+		bool* foundFlags)
 	{
-		int tid = threadIdx.x;
 		int bid = blockIdx.x;
-		int threadsPerAgent = blockDim.x;
-
-		queues.D(bid * threadsPerAgent + tid).RemoveAll();
+		int tid = threadIdx.x;
+		int threadsCount = blockDim.x;
 
 		auto visited = visiteds.D(bid);
-		for (int i = tid; i < visited.Count(); i += threadsPerAgent)
+		for (int i = tid; i < visited.Count(); i += threadsCount)
 			visited.UnOccupy(i);
 
-		if (tid == 0 && bid == 0)
-		{
-			frontier.RemoveAll();
-			requests.RemoveAll();
-			agentsIndices.RemoveAll();
-			*procAgentsCount = 0;
-			*requestsCount = 0;
-		}
-
 		if (tid == 0)
+		{
+			frontiers.D(bid).RemoveAll();
 			foundFlags[bid] = false;
+		}
 	}
 
 	__global__ void KernelPrepareSearch(
@@ -170,6 +169,7 @@ namespace cupat
 		auto visited = visiteds.D(bid);
 		auto frontier = frontiers.D(bid);
 		auto queue = queues.D(bid * threadsCount + tid);
+		queue.RemoveAll();
 
 		__shared__ bool sharedIsFound;
 		sharedIsFound = false;
@@ -189,8 +189,6 @@ namespace cupat
 			int visitedIdx = visited.GetIdx(initialNode.Cell.X, initialNode.Cell.Y);
 			visited.TryOccupy(visitedIdx);
 			visited.At(visitedIdx) = initialNode;
-
-			dFoundFlags[bid] = false;
 		}
 
 		while (!sharedIsFound)
@@ -237,7 +235,6 @@ namespace cupat
 			int isAnyQueueNotEmpty = __syncthreads_or(queue.Count());
 			if (isAnyQueueNotEmpty == 0)
 				return;
-			__syncthreads();
 			if (tid == 0)
 				frontier.RemoveAll();
 			__syncthreads();
@@ -441,9 +438,6 @@ namespace cupat
 
 		void AsyncPreFind()
 		{
-			ClearCollections();
-			if (DebugSyncMode)
-				CudaSyncAndCatch();
 			PrepareSearch();
 			if (DebugSyncMode)
 				CudaSyncAndCatch();
@@ -453,7 +447,9 @@ namespace cupat
 		{
 			if (*_hRequestsCount == 0)
 				return;
-
+			ClearCollections();
+			if (DebugSyncMode)
+				CudaSyncAndCatch();
 			Search();
 			if (DebugSyncMode)
 				CudaSyncAndCatch();
@@ -525,15 +521,13 @@ namespace cupat
 		{
 			cudaEventRecord(_evClearCollectionsStart, _stream);
 
-			KernelClearCollections<<<_parallelAgentsCount, _threadsPerAgent, 0, _stream>>>(
+			int requestsCount = *_hRequestsCount;
+			int threadsPerBlock = 256;
+
+			KernelClearCollections<<<requestsCount, threadsPerBlock, 0, _stream>>>(
 				_visiteds,
-				_queues,
-				_frontiers.D(0),
-				_procAgentsIndices.D(0),
-				_requests.D(0),
-				_dFoundFlags,
-				_dProcAgentsCount,
-				_dRequestsCount
+				_frontiers,
+				_dFoundFlags
 			);
 
 			cudaEventRecord(_evClearCollectionsEnd);
@@ -542,6 +536,13 @@ namespace cupat
 		void PrepareSearch()
 		{
 			cudaEventRecord(_evPrepareSearchStart, _stream);
+
+			KernelClearRequestsAndProcAgents<<<1, 1, 0, _stream>>>(
+				_requests.D(0),
+				_dRequestsCount,
+				_procAgentsIndices.D(0),
+				_dProcAgentsCount
+			);
 
 			int threadsCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
