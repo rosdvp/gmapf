@@ -12,6 +12,8 @@ namespace cupat
 #define TIME_DIFF_MS(start) std::chrono::duration_cast<std::chrono::microseconds>(TIME_GET - (start)).count() / 1000.0f
 #define TIME_COUNTER_ADD(start, counter) (counter) += std::chrono::duration_cast<std::chrono::microseconds>(TIME_GET - (start)).count()
 #define TIME_COUNTER_GET(counter) ((counter) / 1000.0f)
+#define TIME_APPLY_RECORD(dur, durSum, durMax) (durSum) += (dur); (durMax) = std::max((dur), (durMax))
+#define TIME_STD_OUT(text, durSum, durMax, count) std::cout << (text) << " avg: " << ((durSum) / (count)) << " max: " << (durMax) << std::endl
 
 	inline void CudaCheck(const cudaError_t& result, const char* info)
 	{

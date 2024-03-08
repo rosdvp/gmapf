@@ -539,6 +539,31 @@ namespace cupat
 			cudaEventRecord(_evClearCollectionsEnd);
 		}
 
+		void PrepareSearch()
+		{
+			cudaEventRecord(_evPrepareSearchStart, _stream);
+
+			int threadsCount = _agents.H(0).Count();
+			int threadsPerBlock = 128;
+			int blocksCount = threadsCount / threadsPerBlock;
+			if (blocksCount * threadsPerBlock < threadsCount)
+				blocksCount += 1;
+
+			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream >>>(
+				_pathsStorage,
+				_agents.D(0),
+				_procAgentsIndices.D(0),
+				_requests.D(0),
+				_dProcAgentsCount,
+				_dRequestsCount
+				);
+
+			cudaMemcpyAsync(_hProcAgentsCount, _dProcAgentsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
+			cudaMemcpyAsync(_hRequestsCount, _dRequestsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
+
+			cudaEventRecord(_evPrepareSearchEnd, _stream);
+		}
+
 		void Search()
 		{
 			int requestsCount = *_hRequestsCount;
@@ -554,31 +579,6 @@ namespace cupat
 				_dFoundFlags
 			);
 			cudaEventRecord(_evSearchEnd, _stream);
-		}
-
-		void PrepareSearch()
-		{
-			cudaEventRecord(_evPrepareSearchStart, _stream);
-
-			int threadsCount = _agents.H(0).Count();
-			int threadsPerBlock = 128;
-			int blocksCount = threadsCount / threadsPerBlock;
-			if (blocksCount * threadsPerBlock < threadsCount)
-				blocksCount += 1;
-
-			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream>>>(
-				_pathsStorage,
-				_agents.D(0),
-				_procAgentsIndices.D(0),
-				_requests.D(0),
-				_dProcAgentsCount,
-				_dRequestsCount
-			);
-
-			cudaMemcpyAsync(_hProcAgentsCount, _dProcAgentsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
-			cudaMemcpyAsync(_hRequestsCount, _dRequestsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
-
-			cudaEventRecord(_evPrepareSearchEnd, _stream);
 		}
 
 		void BuildPaths()

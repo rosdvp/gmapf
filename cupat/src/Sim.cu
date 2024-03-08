@@ -112,8 +112,8 @@ void Sim::Start(bool isDebugSyncMode)
 {
 	cudaSetDevice(0);
 	CudaCatch();
-	cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
-	CudaCatch();
+	//cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
+	//CudaCatch();
 
 	CudaCatch();
 	_map->CopyToDevice();
@@ -155,20 +155,35 @@ void Sim::DoStep(float deltaTime)
 	_pathFinder->Sync();
 	_agentsMover->Sync();
 
+	auto durPre = TIME_DIFF_MS(tStart);
+	TIME_STAMP(tMain);
+
 	_pathFinder->AsyncFind();
 	_agentsMover->AsyncMove(deltaTime);
 
 	_pathFinder->Sync();
 	_agentsMover->Sync();
 
+	auto durMain = TIME_DIFF_MS(tMain);
+	TIME_STAMP(tPost);
+
 	_pathFinder->PostFind();
 	_agentsMover->PostMove();
 
+	auto durPost = TIME_DIFF_MS(tPost);
+	TIME_STAMP(tCopy);
+
 	_agents->CopyToHost();
 
-	auto step = TIME_DIFF_MS(tStart);
-	_debugDurStep += step;
-	_debugDurStepMax = std::max(step, _debugDurStepMax);
+	auto durCopy = TIME_DIFF_MS(tCopy);
+	auto durStep = TIME_DIFF_MS(tStart);
+
+	TIME_APPLY_RECORD(durStep, _debugDurStepSum, _debugDurStepMax);
+	TIME_APPLY_RECORD(durPre, _debugDurStepPreSum, _debugDurStepPreMax);
+	TIME_APPLY_RECORD(durMain, _debugDurStepMainSum, _debugDurStepMainMax);
+	TIME_APPLY_RECORD(durPost, _debugDurStepPostSum, _debugDurStepPostMax);
+	TIME_APPLY_RECORD(durCopy, _debugDurStepCopySum, _debugDurStepCopyMax);
+
 	_debugStepsCount += 1;
 }
 
@@ -183,7 +198,7 @@ void Sim::DoStepOnlyFinder()
 	_pathFinder->PostFind();
 
 	auto step = TIME_DIFF_MS(tStart);
-	_debugDurStep += step;
+	_debugDurStepSum += step;
 	_debugDurStepMax = std::max(step, _debugDurStepMax);
 	_debugStepsCount += 1;
 }
@@ -201,7 +216,7 @@ void Sim::DoStepOnlyMover(float deltaTime)
 	_agents->CopyToHost();
 
 	auto step = TIME_DIFF_MS(tStart);
-	_debugDurStep += step;
+	_debugDurStepSum += step;
 	_debugDurStepMax = std::max(step, _debugDurStepMax);
 	_debugStepsCount += 1;
 }
@@ -213,11 +228,16 @@ const V2Float& Sim::GetAgentPos(int agentId)
 
 void Sim::DebugDump() const
 {
-	printf("----------------------\n");
+	std::cout << "----------------------" << std::endl;
 
-	printf("sim step ms, avg: %f, max: %f, sum: %f\n", _debugDurStep / _debugStepsCount, _debugDurStepMax, _debugDurStep);
 
-	printf("\n");
+	TIME_STD_OUT("sim step", _debugDurStepSum, _debugDurStepMax, _debugStepsCount);
+	TIME_STD_OUT("sim step pre", _debugDurStepPreSum, _debugDurStepPreMax, _debugStepsCount);
+	TIME_STD_OUT("sim step main", _debugDurStepMainSum, _debugDurStepMainMax, _debugStepsCount);
+	TIME_STD_OUT("sim step post", _debugDurStepPostSum, _debugDurStepPostMax, _debugStepsCount);
+	TIME_STD_OUT("sim step copy", _debugDurStepCopySum, _debugDurStepCopyMax, _debugStepsCount);
+
+	std::cout << std::endl << "path finder:" << std::endl;
 
 	int count = _pathFinder->DebugRecordsCount;
 	printf("path finder:\n");

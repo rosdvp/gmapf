@@ -32,26 +32,45 @@ namespace cupat
 
 		__host__ __device__ void Push(const T& item)
 		{
-			int idx = 0;
-			for (; idx < *_count; idx++)
-				if (item.F > _data[idx].F)
-					break;
-
 			int count = *_count;
 			int capacity = *_capacity;
-			int last = count == capacity ? count - 1 : count;
-			for (int i = last; i > idx; i--)
-				_data[i] = _data[i - 1];
 
-			_data[idx] = item;
-			if (*_count < *_capacity)
+			int idx = -1;
+			for (int i = count-1; i >= 0; i--)
+				if (item.F < _data[i].F)
+				{
+					idx = i;
+					break;
+				}
+
+			if (count < capacity)
+			{
+				idx += 1;
+
+				for (int i = count; i > idx; i--)
+					_data[i] = _data[i - 1];
 				*_count += 1;
+			}
+			else
+			{
+				if (idx == -1)
+					return;
+
+				for (int i = 0; i < idx; i++)
+					_data[i] = _data[i + 1];
+			}
+			_data[idx] = item;
+
+			//printf("queue push (%d, %d):\n", item.Cell.X, item.Cell.Y);
+			//for (int i = 0; i < *_count; i++)
+			//	printf("[%d] (%d, %d) F=(%f)\n", i, _data[i].Cell.X, _data[i].Cell.Y, _data[i].F);
 		}
 
 		__host__ __device__ T Pop()
 		{
 			assert(*_count > 0);
 			*_count -= 1;
+			//printf("pop (%d, %d)\n", _data[*_count].Cell.X, _data[*_count].Cell.Y);
 			return _data[*_count];
 		}
 

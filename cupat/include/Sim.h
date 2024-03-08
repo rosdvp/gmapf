@@ -52,8 +52,16 @@ namespace cupat
 		PathFinder* _pathFinder = nullptr;
 		AgentsMover* _agentsMover = nullptr;
 
-		float _debugDurStep = 0;
+		float _debugDurStepSum = 0;
 		float _debugDurStepMax = 0;
+		float _debugDurStepPreSum = 0;
+		float _debugDurStepPreMax = 0;
+		float _debugDurStepMainSum = 0;
+		float _debugDurStepMainMax = 0;
+		float _debugDurStepPostSum = 0;
+		float _debugDurStepPostMax = 0;
+		float _debugDurStepCopySum = 0;
+		float _debugDurStepCopyMax = 0;
 		int _debugStepsCount = 0;
 	};
 }
