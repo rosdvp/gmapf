@@ -159,6 +159,18 @@ namespace cupat
 		}
 	}
 
+	__global__ void KernelFreeAgentsPaths(
+		CuList<Agent> agents)
+	{
+		for (int i = 0; i < agents.Count(); i++)
+			if (agents.At(i).Path != nullptr)
+			{
+				cudaFree(agents.At(i).Path);
+				agents.At(i).Path = nullptr;
+			}
+	}
+
+
 	class AgentsMover
 	{
 	public:
@@ -218,6 +230,19 @@ namespace cupat
 
 		~AgentsMover()
 		{
+			KernelFreeAgentsPaths<<<1, 1>>>(_agents.D(0));
+			CudaSyncAndCatch();
+
+			cudaStreamDestroy(_stream);
+			cudaEventDestroy(_evFindAgentsStart);
+			cudaEventDestroy(_evFindAgentsEnd);
+			cudaEventDestroy(_evMoveAgentsStart);
+			cudaEventDestroy(_evMoveAgentsEnd);
+			cudaEventDestroy(_evResolveCollisionsStart);
+			cudaEventDestroy(_evResolveCollisionsEnd);
+			cudaEventDestroy(_evUpdateCellsStart);
+			cudaEventDestroy(_evUpdateCellsEnd);
+
 			_procAgentsIndices.DFree();
 
 			cudaFree(_dProcAgentsCount);
