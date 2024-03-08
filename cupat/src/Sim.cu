@@ -197,7 +197,6 @@ void Sim::DoStep(float deltaTime)
 	TIME_APPLY_RECORD(durMain, _debugDurStepMainSum, _debugDurStepMainMax);
 	TIME_APPLY_RECORD(durPost, _debugDurStepPostSum, _debugDurStepPostMax);
 	TIME_APPLY_RECORD(durCopy, _debugDurStepCopySum, _debugDurStepCopyMax);
-
 	_debugStepsCount += 1;
 }
 
@@ -209,15 +208,28 @@ void Sim::DoStepOnlyFinder()
 
 	_pathFinder->AsyncPreFind();
 	_pathFinder->Sync();
+
+	auto durPre = TIME_DIFF_MS(tStart);
+	TIME_STAMP(tMain);
+
 	_pathFinder->AsyncFind();
 	_pathFinder->Sync();
+
+	auto durMain = TIME_DIFF_MS(tMain);
+	TIME_STAMP(tPost);
+
 	_pathFinder->PostFind();
+
+	auto durPost = TIME_DIFF_MS(tPost);
 
 	CuDriverCatch(cuCtxPopCurrent(nullptr));
 
-	auto step = TIME_DIFF_MS(tStart);
-	_debugDurStepSum += step;
-	_debugDurStepMax = std::max(step, _debugDurStepMax);
+	auto durStep = TIME_DIFF_MS(tStart);
+
+	TIME_APPLY_RECORD(durStep, _debugDurStepSum, _debugDurStepMax);
+	TIME_APPLY_RECORD(durPre, _debugDurStepPreSum, _debugDurStepPreMax);
+	TIME_APPLY_RECORD(durMain, _debugDurStepMainSum, _debugDurStepMainMax);
+	TIME_APPLY_RECORD(durPost, _debugDurStepPostSum, _debugDurStepPostMax);
 	_debugStepsCount += 1;
 }
 
