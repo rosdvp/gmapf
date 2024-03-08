@@ -118,6 +118,7 @@ void Sim::Start(bool isDebugSyncMode)
 	CUdevice device;
 	CuDriverCatch(cuDeviceGet(&device, 0));
 	CuDriverCatch(cuCtxCreate(&_cuContext, 0, device));
+	CuDriverCatch(cuCtxSetLimit(CU_LIMIT_MALLOC_HEAP_SIZE, (size_t)1024 * (size_t)1024 * (size_t)128));
 
 	//cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
 	//CudaCatch();
