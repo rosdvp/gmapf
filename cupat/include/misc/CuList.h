@@ -59,6 +59,19 @@ namespace cupat
 			return *_capacity;
 		}
 
+		__host__ __device__ void Reverse() const
+		{
+			int count = *_count;
+
+			for (int i = 0; i < count / 2; i++)
+			{
+				int r = count - i - 1;
+				T temp = _data[i];
+				_data[i] = _data[r];
+				_data[r] = temp;
+			}
+		}
+
 		__host__ __device__ static constexpr size_t EvalSize(int capacity)
 		{
 			return 8 + 8 + sizeof(T) * capacity;
