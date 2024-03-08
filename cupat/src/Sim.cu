@@ -52,6 +52,8 @@ void Sim::Destroy()
 
 	CudaCatch();
 
+	CuDriverCatch(cuCtxDestroy(_cuContext));
+
 	std::cout << "[cupat] sim destroyed" << std::endl;
 }
 
@@ -112,6 +114,11 @@ void Sim::Start(bool isDebugSyncMode)
 {
 	cudaSetDevice(0);
 	CudaCatch();
+
+	CUdevice device;
+	CuDriverCatch(cuDeviceGet(&device, 0));
+	CuDriverCatch(cuCtxCreate(&_cuContext, 0, device));
+
 	//cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024 * 1024 * 32);
 	//CudaCatch();
 
@@ -143,11 +150,15 @@ void Sim::Start(bool isDebugSyncMode)
 		_config.AgentRadius,
 		_config.AgentsCount
 	);
+
+	CuDriverCatch(cuCtxPopCurrent(nullptr));
 }
 
 void Sim::DoStep(float deltaTime)
 {
 	TIME_STAMP(tStart);
+
+	CuDriverCatch(cuCtxPushCurrent(_cuContext));
 
 	_pathFinder->AsyncPreFind();
 	_agentsMover->AsyncPreMove();
@@ -176,6 +187,9 @@ void Sim::DoStep(float deltaTime)
 	_agents->CopyToHost();
 
 	auto durCopy = TIME_DIFF_MS(tCopy);
+
+	CuDriverCatch(cuCtxPopCurrent(nullptr));
+
 	auto durStep = TIME_DIFF_MS(tStart);
 
 	TIME_APPLY_RECORD(durStep, _debugDurStepSum, _debugDurStepMax);
@@ -191,11 +205,15 @@ void Sim::DoStepOnlyFinder()
 {
 	TIME_STAMP(tStart);
 
+	CuDriverCatch(cuCtxPushCurrent(_cuContext));
+
 	_pathFinder->AsyncPreFind();
 	_pathFinder->Sync();
 	_pathFinder->AsyncFind();
 	_pathFinder->Sync();
 	_pathFinder->PostFind();
+
+	CuDriverCatch(cuCtxPopCurrent(nullptr));
 
 	auto step = TIME_DIFF_MS(tStart);
 	_debugDurStepSum += step;
@@ -207,6 +225,8 @@ void Sim::DoStepOnlyMover(float deltaTime)
 {
 	TIME_STAMP(tStart);
 
+	CuDriverCatch(cuCtxPushCurrent(_cuContext));
+
 	_agentsMover->AsyncPreMove();
 	_agentsMover->Sync();
 	_agentsMover->AsyncMove(deltaTime);
@@ -214,6 +234,8 @@ void Sim::DoStepOnlyMover(float deltaTime)
 	_agentsMover->PostMove();
 
 	_agents->CopyToHost();
+
+	CuDriverCatch(cuCtxPopCurrent(nullptr));
 
 	auto step = TIME_DIFF_MS(tStart);
 	_debugDurStepSum += step;

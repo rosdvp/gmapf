@@ -63,4 +63,20 @@ namespace cupat
 
 		return true;
 	}
+
+	inline void CuDriverCatch(CUresult res)
+	{
+		if (res == CUDA_SUCCESS)
+			return;
+
+		const char* errorName;
+		cuGetErrorName(res, &errorName);
+		const char* errorStr;
+		cuGetErrorString(res, &errorStr);
+
+		std::cout << "[cupat] cuda error" << std::endl;
+		std::cout << errorName << std::endl;
+		std::cout << errorStr << std::endl;
+		throw std::exception();
+	}
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 
+#include "cuda.h"
 #include "Agent.h"
 #include "ConfigSim.h"
 #include "MapDesc.h"
@@ -45,6 +46,8 @@ namespace cupat
 		ConfigSim _config;
 
 		MapDesc _mapDesc;
+
+		CUcontext _cuContext;
 
 		Cum<CuMatrix<int>>* _map = nullptr;
 		Cum<CuList<Agent>>* _agents = nullptr;
