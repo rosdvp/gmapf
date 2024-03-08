@@ -393,23 +393,25 @@ namespace cupat
 
 		void DebugRecordDurs()
 		{
-			float temp = 0;
+			float t1 = 0;
+			cudaEventElapsedTime(&t1, _evFindAgentsStart, _evFindAgentsEnd);
+			DebugDurFindAgentsMax = std::max(t1, DebugDurFindAgentsMax);
+			DebugDurFindAgents += t1;
 
-			cudaEventElapsedTime(&temp, _evFindAgentsStart, _evFindAgentsEnd);
-			DebugDurFindAgentsMax = std::max(temp, DebugDurFindAgentsMax);
-			DebugDurFindAgents += temp;
+			float t2 = 0;
+			cudaEventElapsedTime(&t2, _evMoveAgentsStart, _evMoveAgentsEnd);
+			DebugDurMoveAgentsMax = std::max(t2, DebugDurMoveAgentsMax);
+			DebugDurMoveAgents += t2;
 
-			cudaEventElapsedTime(&temp, _evMoveAgentsStart, _evMoveAgentsEnd);
-			DebugDurMoveAgentsMax = std::max(temp, DebugDurMoveAgentsMax);
-			DebugDurMoveAgents += temp;
+			float t3 = 0;
+			cudaEventElapsedTime(&t3, _evResolveCollisionsStart, _evResolveCollisionsEnd);
+			DebugDurResolveCollisionsMax = std::max(t3, DebugDurResolveCollisionsMax);
+			DebugDurResolveCollisions += t3;
 
-			cudaEventElapsedTime(&temp, _evResolveCollisionsStart, _evResolveCollisionsEnd);
-			DebugDurResolveCollisionsMax = std::max(temp, DebugDurResolveCollisionsMax);
-			DebugDurResolveCollisions += temp;
-
-			cudaEventElapsedTime(&temp, _evUpdateCellsStart, _evUpdateCellsEnd);
-			DebugDurUpdateCellMax = std::max(temp, DebugDurUpdateCellMax);
-			DebugDurUpdateCell += temp;
+			float t4 = 0;
+			cudaEventElapsedTime(&t4, _evUpdateCellsStart, _evUpdateCellsEnd);
+			DebugDurUpdateCellMax = std::max(t4, DebugDurUpdateCellMax);
+			DebugDurUpdateCell += t4;
 
 			DebugRecordsCount += 1;
 		}
