@@ -25,10 +25,10 @@ void TestFinder()
 	for (int i = 0; i < config.AgentsCount; i++)
 	{
 		sim.SetAgentInitialPos(i, { static_cast<float>(i / 5.0f), 0 });
-		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 900 });
+		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 950 });
 	}
 
-	//PlaceObstacles(sim, config.MapCountX, config.MapCountY);
+	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
 	//for (int x = 0; x < config.MapCountX; x++)
 	//	sim.SetObstacle({ x, 50});
 
