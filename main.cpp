@@ -10,12 +10,12 @@ void TestFinder()
 	config.MapCountX = 100;
 	config.MapCountY = 100;
 	config.MapCellSize = 10;
-	config.AgentsCount = 100;
+	config.AgentsCount = 4096;
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
-	config.PathFinderParallelAgents = 128;
-	config.PathFinderThreadsPerAgents = 128;
-	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderParallelAgents = 2048;
+	config.PathFinderThreadsPerAgents = 32;
+	config.PathFinderEachQueueCapacity = 16;
 	config.PathFinderHeuristicK = 1;
 	config.PathStorageCapacityK = 2;
 
@@ -24,15 +24,16 @@ void TestFinder()
 
 	for (int i = 0; i < config.AgentsCount; i++)
 	{
-		sim.SetAgentInitialPos(i, { static_cast<float>(i * 5), 0 });
-		sim.SetAgentTargPos(i, { static_cast<float>(i * 5), 900 });
+		sim.SetAgentInitialPos(i, { static_cast<float>(i / 5.0f), 0 });
+		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 900 });
 	}
 
-	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
+	//PlaceObstacles(sim, config.MapCountX, config.MapCountY);
 	//for (int x = 0; x < config.MapCountX; x++)
 	//	sim.SetObstacle({ x, 50});
 
 	sim.Start(true);
+
 	sim.DoStepOnlyFinder();
 
 	sim.DebugDump();
@@ -50,7 +51,7 @@ void TestMover()
 	config.AgentSpeed = 1;
 	config.AgentRadius = 5;
 	config.PathFinderParallelAgents = 128;
-	config.PathFinderThreadsPerAgents = 128;
+	config.PathFinderThreadsPerAgents = 32;
 	config.PathFinderEachQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
 	config.PathStorageCapacityK = 2;
