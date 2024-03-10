@@ -2,7 +2,8 @@
 
 #include "cupat/include/Sim.h"
 
-void PlaceObstacles(cupat::Sim& sim, int width, int height);
+void PlaceObstaclesLines(cupat::Sim& sim);
+void PlaceObstaclesZigZag(cupat::Sim& sim);
 
 void TestFinder()
 {
@@ -10,7 +11,7 @@ void TestFinder()
 	config.MapCountX = 100;
 	config.MapCountY = 100;
 	config.MapCellSize = 10;
-	config.AgentsCount = 4096;
+	config.AgentsCount = 2048;
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
 	config.PathFinderParallelAgents = 2048;
@@ -28,7 +29,8 @@ void TestFinder()
 		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 950 });
 	}
 
-	PlaceObstacles(sim, config.MapCountX, config.MapCountY);
+	PlaceObstaclesLines(sim);
+	//PlaceObstaclesZigZag(sim);
 	//for (int x = 0; x < config.MapCountX; x++)
 	//	sim.SetObstacle({ x, 50});
 
@@ -156,32 +158,61 @@ int main()
 }
 
 
-void PlaceObstacles(cupat::Sim& sim, int width, int height)
+void PlaceObstaclesLinesSub(cupat::Sim& sim, int offsetX, int lineY, int lineWidth, int space)
 {
-	for (int x = 0; x < width - 1; x++)
-		sim.SetObstacle({ x, 10 });
+	int x = offsetX;
+	while (x < 100)
+	{
+		for (int i = 0; i < lineWidth; i++)
+		{
+			if (x >= 0 && x < 100)
+			{
+				sim.SetObstacle({ x, lineY });
+				//printf("X");
+			}
+			x += 1;
+		}
+		for (int i = 0; i < space; i++)
+		{
+			//if (x >= 0 && x < 100)
+			//	printf("-");
+			x += 1;
+		}
+	}
+	//printf("\n");
+}
 
-	for (int x = 10; x < width; x++)
+void PlaceObstaclesLines(cupat::Sim& sim)
+{
+	PlaceObstaclesLinesSub(sim, 0, 20, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18, 30, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18 * 2, 40, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18 * 3, 50, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18 * 4, 60, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18 * 5, 70, 20, 10);
+	PlaceObstaclesLinesSub(sim, -18 * 6, 80, 20, 10);
+}
+
+void PlaceObstaclesZigZag(cupat::Sim& sim)
+{
+	for (int x = 10; x < 100; x++)
 		sim.SetObstacle({ x, 20 });
 
-	for (int x = 0; x < width - 1; x++)
+	for (int x = 0; x < 90; x++)
 		sim.SetObstacle({ x, 30 });
 
-	for (int x = 10; x < width; x++)
+	for (int x = 10; x < 100; x++)
 		sim.SetObstacle({ x, 40 });
 
-	for (int x = 0; x < width - 1; x++)
+	for (int x = 0; x < 90; x++)
 		sim.SetObstacle({ x, 50 });
 
-	for (int x = 10; x < width; x++)
+	for (int x = 10; x < 100; x++)
 		sim.SetObstacle({ x, 60 });
 
-	for (int x = 0; x < width - 1; x++)
+	for (int x = 0; x < 90; x++)
 		sim.SetObstacle({ x, 70 });
 
-	for (int x = 10; x < width; x++)
+	for (int x = 10; x < 100; x++)
 		sim.SetObstacle({ x, 80 });
-
-	for (int x = 0; x < width - 1; x++)
-		sim.SetObstacle({ x, 90 });
 }
