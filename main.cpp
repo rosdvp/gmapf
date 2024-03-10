@@ -16,9 +16,8 @@ void TestFinder()
 	config.AgentRadius = 100;
 	config.PathFinderParallelAgents = 2048;
 	config.PathFinderThreadsPerAgents = 32;
-	config.PathFinderEachQueueCapacity = 16;
+	config.PathFinderQueueCapacity = 4;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageCapacityK = 2;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -29,8 +28,8 @@ void TestFinder()
 		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 950 });
 	}
 
-	PlaceObstaclesLines(sim);
-	//PlaceObstaclesZigZag(sim);
+	//PlaceObstaclesLines(sim);
+	PlaceObstaclesZigZag(sim);
 	//for (int x = 0; x < config.MapCountX; x++)
 	//	sim.SetObstacle({ x, 50});
 
@@ -54,9 +53,8 @@ void TestMover()
 	config.AgentRadius = 5;
 	config.PathFinderParallelAgents = 128;
 	config.PathFinderThreadsPerAgents = 32;
-	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageCapacityK = 2;
 
 	cupat::Sim sim;
 	sim.Init(config);
@@ -115,9 +113,8 @@ void TestFull()
 	config.AgentRadius = 2;
 	config.PathFinderParallelAgents = 128;
 	config.PathFinderThreadsPerAgents = 128;
-	config.PathFinderEachQueueCapacity = 32;
+	config.PathFinderQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
-	config.PathStorageCapacityK = 4;
 
 	cupat::Sim sim;
 	sim.Init(config);

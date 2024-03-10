@@ -14,9 +14,7 @@ namespace cupat
 
 		int PathFinderParallelAgents;
 		int PathFinderThreadsPerAgents;
-		int PathFinderEachQueueCapacity;
+		int PathFinderQueueCapacity;
 		float PathFinderHeuristicK;
-
-		int PathStorageCapacityK;
 	};
 }

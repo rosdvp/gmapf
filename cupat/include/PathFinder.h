@@ -20,6 +20,7 @@ namespace cupat
 		int AgentIdx;
 		V2Int StartCell;
 		V2Int TargetCell;
+		int FoundFlag;
 		V2Int MiddleCellFromStart;
 		V2Int MiddleCellFromTarget;
 	};
@@ -74,8 +75,7 @@ namespace cupat
 
 	__global__ void KernelClearCollections(
 		Cum<CuMatrix<AStarNode>> visiteds,
-		Cum<CuList<AStarNode>> frontiers,
-		bool* foundFlags)
+		Cum<CuList<AStarNode>> frontiers)
 	{
 		int bid = blockIdx.x;
 		int tid = threadIdx.x;
@@ -89,10 +89,7 @@ namespace cupat
 		}
 
 		if (tid == 0)
-		{
 			frontiers.D(bid).RemoveAll();
-			foundFlags[bid] = false;
-		}
 	}
 
 	__global__ void KernelPrepareSearch(
@@ -126,18 +123,19 @@ namespace cupat
 			req.AgentIdx = i;
 			req.StartCell = agent.CurrCell;
 			req.TargetCell = agent.TargCell;
+			req.FoundFlag = 0;
 			requests.AddAtomic(req);
 		}
 	}
 
 	__global__ void KernelSearch(
+		int queuesPerAgent,
 		float heuristicK,
 		CuMatrix<int> map,
 		CuList<PathRequest> requests,
 		Cum<CuMatrix<AStarNode>> visiteds,
 		Cum<CuList<AStarNode>> frontiers,
-		Cum<CuQueue<AStarNode>> queues,
-		bool* dFoundFlags)
+		Cum<CuQueue<AStarNode>> queues)
 	{
 		V2Int neibsCellsDeltas[8] =
 		{
@@ -151,24 +149,28 @@ namespace cupat
 			{-1, 1}
 		};
 
-		int tid = threadIdx.x;
-		int bid = blockIdx.x;
-		int threadsCount = blockDim.x;
+		int tid = blockDim.x * blockIdx.x + threadIdx.x;
+		int reqIdx = tid / queuesPerAgent;
+		if (reqIdx >= requests.Count())
+			return;
+		int requestsInBlock = blockDim.x / queuesPerAgent;
+		int requestInBlockIdx = reqIdx % requestsInBlock;
+		int queueIdx = tid % queuesPerAgent;
+		int queueInBlockIdx = reqIdx * queuesPerAgent + queueIdx;
 
-		auto visited = visiteds.D(bid);
-		auto frontier = frontiers.D(bid);
-		auto queue = queues.D(bid * threadsCount + tid);
-		queue.RemoveAll();
-
-		__shared__ int sharedIsFound;
-		sharedIsFound = 0;
-
-		//printf("bid %d count %d\n", bid, requests.Count());
-		PathRequest& request = requests.At(bid);
+		PathRequest& request = requests.At(reqIdx);
 		V2Int startCell = request.StartCell;
 		V2Int targCell = request.TargetCell;
 
-		if (tid == 0)
+		auto visited = visiteds.D(reqIdx);
+		auto frontier = frontiers.D(reqIdx);
+		auto queue = queues.D(queueInBlockIdx);
+		queue.RemoveAll();
+
+		__shared__ int sharedQueuesTotalCounts[64];
+		sharedQueuesTotalCounts[requestInBlockIdx] = 0;
+
+		if (queueIdx == 0)
 		{
 			AStarNode startNode;
 			startNode.Cell = startCell;
@@ -181,7 +183,7 @@ namespace cupat
 			visited.TryOccupy(visitedIdx);
 			visited.At(visitedIdx) = startNode;
 		}
-		if (tid == 1)
+		if (queueIdx == 1)
 		{
 			AStarNode targNode;
 			targNode.Cell = targCell;
@@ -195,7 +197,7 @@ namespace cupat
 			visited.At(visitedIdx) = targNode;
 		}
 
-		while (sharedIsFound == 0)
+		while (request.FoundFlag == 0)
 		{
 			if (queue.Count() > 0)
 			{
@@ -224,7 +226,7 @@ namespace cupat
 
 			__syncthreads();
 
-			for (int i = tid; i < frontier.Count(); i += threadsCount)
+			for (int i = queueIdx; i < frontier.Count(); i += queuesPerAgent)
 			{
 				auto& node = frontier.At(i);
 				int idx = visited.GetIdx(node.Cell.X, node.Cell.Y);
@@ -235,30 +237,29 @@ namespace cupat
 				}
 				else if (visited.At(idx).FromStart != -1 && node.FromStart != visited.At(idx).FromStart)
 				{
-					if (atomicExch(&sharedIsFound, 1) == 0)
+					if (atomicExch(&request.FoundFlag, 1) == 0)
 					{
 						request.MiddleCellFromStart = node.FromStart == 1 ? node.PrevCell : visited.At(idx).Cell;
 						request.MiddleCellFromTarget = node.FromStart == 1 ? visited.At(idx).Cell : node.PrevCell;
-						sharedIsFound = 1;
-						dFoundFlags[bid] = true;
 					}
 				}
 			}
 
-			int isAnyQueueNotEmpty = __syncthreads_or(queue.Count());
-			if (isAnyQueueNotEmpty == 0)
+			atomicAdd(sharedQueuesTotalCounts + requestInBlockIdx, queue.Count());
+			__syncthreads();
+			if (sharedQueuesTotalCounts[requestInBlockIdx] == 0)
 				return;
-			if (tid == 0)
+			if (queueIdx == 0)
 				frontier.RemoveAll();
 			__syncthreads();
+			sharedQueuesTotalCounts[requestInBlockIdx] = 0;
 		}
 	}
 
 	__global__ void KernelBuildPath(
 		CuList<Agent> agents,
 		CuList<PathRequest> requests,
-		Cum<CuMatrix<AStarNode>> visiteds,
-		bool* foundFlags)
+		Cum<CuMatrix<AStarNode>> visiteds)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		if (tid >= requests.Count())
@@ -271,7 +272,7 @@ namespace cupat
 		//	request.MiddleCellFromStart.X, request.MiddleCellFromStart.Y,
 		//	request.MiddleCellFromTarget.X, request.MiddleCellFromTarget.Y);
 
-		if (foundFlags[tid] == false)
+		if (request.FoundFlag == 0)
 		{
 			agent.IsNewPathRequested = false;
 			agent.IsTargetReached = true;
@@ -282,33 +283,20 @@ namespace cupat
 
 		auto visited = visiteds.D(tid);
 
-
-		int pathLength = 0;
-		V2Int iter = request.MiddleCellFromStart;
-		while (iter != request.StartCell)
-		{
-			pathLength += 1;
-			iter = visited.At(iter.X, iter.Y).PrevCell;
-		}
-
-		iter = request.MiddleCellFromTarget;
-		while (iter != request.TargetCell)
-		{
-			pathLength += 1;
-			iter = visited.At(iter.X, iter.Y).PrevCell;
-		}
-		pathLength += 1; // to add target cell
+		int pathLength = visited.At(request.MiddleCellFromStart).G
+			+ visited.At(request.MiddleCellFromTarget).G
+			+ 1; // to add target cell
 
 		void* pPath;
 		cudaMalloc(&pPath, CuList<V2Int>::EvalSize(pathLength));
 		CuList<V2Int> path(pPath);
 		path.Mark(pathLength);
 
-		iter = request.MiddleCellFromStart;
+		V2Int iter = request.MiddleCellFromStart;
 		while (iter != request.StartCell)
 		{
 			path.Add(iter);
-			iter = visited.At(iter.X, iter.Y).PrevCell;
+			iter = visited.At(iter).PrevCell;
 		}
 
 		path.Reverse();
@@ -317,7 +305,7 @@ namespace cupat
 		while (iter != request.TargetCell)
 		{
 			path.Add(iter);
-			iter = visited.At(iter.X, iter.Y).PrevCell;
+			iter = visited.At(iter).PrevCell;
 		}
 		path.Add(request.TargetCell);
 
@@ -375,13 +363,12 @@ namespace cupat
 			int parallelAgentsCount,
 			int threadsPerAgent,
 			int queueCapacity,
-			float heuristicK,
-			int pathStorageCapacityK)
+			float heuristicK)
 		{
 			_map = map;
 			_agents = agents;
 
-			_threadsPerAgent = threadsPerAgent;
+			_queuesPerAgent = threadsPerAgent;
 			_heuristicK = heuristicK;
 
 			int frontierCapacity = (threadsPerAgent+1) * 8;
@@ -396,7 +383,6 @@ namespace cupat
 
 			_hRequestsCount = static_cast<int*>(malloc(sizeof(int)));
 
-			cudaMalloc(&_dFoundFlags, sizeof(bool) * parallelAgentsCount);
 			cudaMalloc(&_dRequestsCount, sizeof(int));
 
 			KernelMarkCollections<<<parallelAgentsCount, threadsPerAgent>>>(
@@ -440,7 +426,6 @@ namespace cupat
 			_frontiers.DFree();
 			_queues.DFree();
 
-			cudaFree(_dFoundFlags);
 			cudaFree(_dRequestsCount);
 
 			free(_hRequestsCount);
@@ -490,7 +475,7 @@ namespace cupat
 
 
 	private:
-		int _threadsPerAgent = 0;
+		int _queuesPerAgent = 0;
 		float _heuristicK = 1.0f;
 
 		Cum<CuMatrix<int>> _map;
@@ -501,7 +486,6 @@ namespace cupat
 		Cum<CuMatrix<AStarNode>> _visiteds;
 		Cum<CuList<AStarNode>> _frontiers;
 		Cum<CuQueue<AStarNode>> _queues;
-		bool* _dFoundFlags = nullptr;
 		int* _hRequestsCount = nullptr;
 		int* _dRequestsCount = nullptr;
 
@@ -525,8 +509,7 @@ namespace cupat
 
 			KernelClearCollections<<<requestsCount, threadsPerBlock, 0, _stream>>>(
 				_visiteds,
-				_frontiers,
-				_dFoundFlags
+				_frontiers
 			);
 
 			cudaEventRecord(_evClearCollectionsEnd);
@@ -560,19 +543,23 @@ namespace cupat
 
 		void Search()
 		{
-			int requestsCount = *_hRequestsCount;
+			int threadsCount = *_hRequestsCount * _queuesPerAgent;
+			int threadsPerBlock = 128;
+			int blocks = threadsCount / threadsPerBlock;
+			if (blocks * threadsPerBlock < threadsCount)
+				blocks += 1;
 
 			//printf("requests count %d\n", requestsCount);
 
 			cudaEventRecord(_evSearchStart, _stream);
-			KernelSearch<<<requestsCount, _threadsPerAgent, 0, _stream>>>(
+			KernelSearch<<<blocks, threadsPerBlock, 0, _stream>>>(
+				_queuesPerAgent,
 				_heuristicK,
 				_map.D(0),
 				_requests.D(0),
 				_visiteds,
 				_frontiers,
-				_queues,
-				_dFoundFlags
+				_queues
 			);
 			cudaEventRecord(_evSearchEnd, _stream);
 		}
@@ -590,8 +577,7 @@ namespace cupat
 			KernelBuildPath<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_agents.D(0),
 				_requests.D(0),
-				_visiteds,
-				_dFoundFlags
+				_visiteds
 			);
 
 			cudaEventRecord(_evBuildPathsEnd, _stream);

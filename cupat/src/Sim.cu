@@ -136,9 +136,8 @@ void Sim::Start(bool isDebugSyncMode)
 		*_agents,
 		_config.PathFinderParallelAgents,
 		_config.PathFinderThreadsPerAgents,
-		_config.PathFinderEachQueueCapacity,
-		_config.PathFinderHeuristicK,
-		_config.PathStorageCapacityK
+		_config.PathFinderQueueCapacity,
+		_config.PathFinderHeuristicK
 	);
 
 	_agentsMover = new AgentsMover();
