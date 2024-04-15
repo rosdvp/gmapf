@@ -4,11 +4,7 @@ namespace cupat
 {
 	struct ConfigSim
 	{
-		int MapCountX;
-		int MapCountY;
-		float MapCellSize;
-
-		int AgentsCount;
+		int AgentsMaxCount;
 		float AgentRadius;
 		float AgentSpeed;
 

@@ -6,21 +6,20 @@
 
 #include "Agent.h"
 #include "Helpers.h"
-#include "MapDesc.h"
 #include "misc/CuList.h"
 #include "misc/Cum.h"
-#include "misc/CuMatrix.h"
+#include "misc/CuNodesMap.h"
 
 namespace cupat
 {
-	__global__ void KernelMarkCollections(
+	static __global__ void KernelMarkCollections(
 		CuList<int> agentsIndices,
 		int parallelAgentsCount)
 	{
 		agentsIndices.Mark(parallelAgentsCount);
 	}
 
-	__global__ void KernelClearCollections(
+	static __global__ void KernelClearCollections(
 		CuList<int> agentsIndices,
 		int* procAgentsCount)
 	{
@@ -28,7 +27,7 @@ namespace cupat
 		*procAgentsCount = 0;
 	}
 
-	__global__ void KernelFindMovingAgents(
+	static __global__ void KernelFindMovingAgents(
 		CuList<Agent> agents,
 		CuList<int> agentsIndices,
 		int* procAgentsCount)
@@ -41,7 +40,7 @@ namespace cupat
 		for (int i = tid; i < agents.Count(); i += threadsCount)
 		{
 			Agent& agent = agents.At(i);
-			if (agent.IsNewPathRequested || agent.IsTargetReached)
+			if (agent.State != EAgentState::Move)
 				continue;
 			agentsIndices.AddAtomic(i);
 			atomicAdd(procAgentsCount, 1);
@@ -50,7 +49,7 @@ namespace cupat
 		}
 	}
 
-	__global__ void KernelMoveAgents(
+	static __global__ void KernelMoveAgents(
 		CuList<Agent> agents,
 		CuList<int> agentsIndices,
 		float agentStep
@@ -61,18 +60,19 @@ namespace cupat
 			return;
 		int agentIdx = agentsIndices.At(tid);
 		Agent& agent = agents.At(agentIdx);
+		if (agent.PathStepIdx == -1)
+			return;
 
-		V2Float delta = agent.PathNextCell - agent.CurrCell;
-		delta = delta * agentStep;
-
-		agent.CurrPos += delta;
-
-		//printf("delta (%f, %f)\n", delta.X, delta.Y);
+		V2Float delta = agent.PathStepPos - agent.CurrPos;
+		float deltaLen = delta.GetLength();
+		if (deltaLen <= agentStep)
+			agent.CurrPos = agent.PathStepPos;
+		else
+			agent.CurrPos += (delta / deltaLen) * agentStep;
 	}
 
-	__global__ void KernelResolveCollisions(
-		MapDesc mapDesc,
-		CuMatrix<int> map,
+	static __global__ void KernelResolveCollisions(
+		CuNodesMap map,
 		CuList<Agent> agents,
 		float collisionDistSqr,
 		float collisionDist)
@@ -123,14 +123,14 @@ namespace cupat
 		avoidStep = avoidStep.GetRotated(10);
 
 		V2Float newPos = agent.CurrPos + avoidStep;
-		if (mapDesc.IsValidPos(newPos) && map.At(mapDesc.PosToCell(newPos)) == 0)
-			agent.CurrPos += avoidStep;
+		if (map.TryGetClosest(newPos, nullptr))
+			agent.CurrPos = newPos;
 
 		//printf("avoid step (%f, %f)\n", avoidStep.X, avoidStep.Y);
 	}
 
-	__global__ void KernelUpdateCells(
-		MapDesc mapDesc,
+	__global__ void KernelUpdatePathProgress(
+		CuNodesMap map,
 		CuList<Agent> agents,
 		CuList<int> agentsIndices)
 	{
@@ -140,22 +140,31 @@ namespace cupat
 		int agentIdx = agentsIndices.At(tid);
 		Agent& agent = agents.At(agentIdx);
 
-		agent.CurrCell = mapDesc.PosToCell(agent.CurrPos);
-		if (agent.CurrCell == agent.TargCell)
+		if (agent.PathStepIdx == -1)
 		{
-			agent.IsTargetReached = true;
-			return;
+			agent.PathStepIdx = 0;
+			CuList<int> path(agent.Path);
+			agent.PathStepNode = path.At(0);
+			agent.PathStepPos = map.GetPos(agent.PathStepNode);
 		}
-		if (agent.CurrCell == agent.PathNextCell)
+		else
 		{
-			CuList<V2Int> path(agent.Path);
+			int newNode = -1;
+			if (!map.TryGetClosest(agent.CurrPos, &newNode))
+				return;
+			if (newNode != agent.PathStepNode)
+				return;
+			CuList<int> path(agent.Path);
 			agent.PathStepIdx += 1;
 			if (agent.PathStepIdx == path.Count())
 			{
-				agent.IsTargetReached = true;
-				return;
+				agent.State = EAgentState::Idle;
 			}
-			agent.PathNextCell = path.At(agent.PathStepIdx);
+			else
+			{
+				agent.PathStepNode = path.At(agent.PathStepIdx);
+				agent.PathStepPos = map.GetPos(agent.PathStepNode);
+			}
 		}
 	}
 
@@ -188,14 +197,12 @@ namespace cupat
 
 
 		void Init(
-			const MapDesc& mapDesc,
-			const Cum<CuMatrix<int>>& map,
+			const Cum<CuNodesMap>& map,
 			const Cum<CuList<Agent>>& agents,
 			float moveSpeed,
 			float agentRadius,
 			int parallelAgentsCount)
 		{
-			_mapDesc = mapDesc;
 			_map = map;
 			_agents = agents;
 
@@ -295,12 +302,11 @@ namespace cupat
 		}
 
 	private:
-		MapDesc _mapDesc;
 		float _moveSpeed = 0;
 		float _collisionDistSqr = 0;
 		float _collisionDist = 0;
 
-		Cum<CuMatrix<int>> _map;
+		Cum<CuNodesMap> _map;
 		Cum<CuList<Agent>> _agents;
 		Cum<CuList<int>> _procAgentsIndices;
 
@@ -365,7 +371,6 @@ namespace cupat
 			int threadsPerBlock = 128;
 
 			KernelResolveCollisions<<<blocksCount, threadsPerBlock, 0, _stream>>>(
-				_mapDesc,
 				_map.D(0),
 				_agents.D(0),
 				_collisionDistSqr,
@@ -382,8 +387,8 @@ namespace cupat
 			int blocksCount = *_hProcAgentsCount;
 			int threadsPerBlock = 128;
 
-			KernelUpdateCells<<<blocksCount, threadsPerBlock, 0, _stream>>>(
-				_mapDesc,
+			KernelUpdatePathProgress<<<blocksCount, threadsPerBlock, 0, _stream>>>(
+				_map.D(0),
 				_agents.D(0),
 				_procAgentsIndices.D(0)
 			);

@@ -1,37 +1,42 @@
 #include <iostream>
+#include <fstream>
 
 #include "cupat/include/Sim.h"
 
-void PlaceObstaclesLines(cupat::Sim& sim);
-void PlaceObstaclesZigZag(cupat::Sim& sim);
+std::vector<cupat::V2Int> GetObstaclesLines();
+std::vector<cupat::V2Int> GetObstaclesZigZag();
+std::vector<int> ConvertObstacles(const std::vector<cupat::V2Int>& obstacles);
+void FillFromFile(cupat::Sim& sim, int agentsCount);
 
 void TestFinder()
 {
 	cupat::ConfigSim config;
-	config.MapCountX = 100;
-	config.MapCountY = 100;
-	config.MapCellSize = 10;
-	config.AgentsCount = 2048;
+	config.AgentsMaxCount = 1024;
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
-	config.PathFinderParallelAgents = 2048;
+	config.PathFinderParallelAgents = 1024;
 	config.PathFinderThreadsPerAgents = 32;
-	config.PathFinderQueueCapacity = 4;
+	config.PathFinderQueueCapacity = 16;
 	config.PathFinderHeuristicK = 1;
 
 	cupat::Sim sim;
 	sim.Init(config);
 
-	for (int i = 0; i < config.AgentsCount; i++)
-	{
-		sim.SetAgentInitialPos(i, { static_cast<float>(i / 5.0f), 0 });
-		sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 950 });
-	}
+	//std::vector<cupat::V2Int> obstacles;
+	//std::vector<cupat::V2Int> obstacles = GetObstaclesLines();
+	//std::vector<cupat::V2Int> obstacles = GetObstaclesZigZag();
+	//for (int x = 0; x < 100; x++)
+	//	obstacles.emplace_back(x, 50);
+	//std::vector<int> cells = ConvertObstacles(obstacles);
+	//sim.FillMap(cells.data(), 10, 100, 100);
 
-	//PlaceObstaclesLines(sim);
-	PlaceObstaclesZigZag(sim);
-	//for (int x = 0; x < config.MapCountX; x++)
-	//	sim.SetObstacle({ x, 50});
+	//for (int i = 0; i < config.AgentsMaxCount; i++)
+	//{
+	//	sim.AddAgent({ static_cast<float>(i / 5.0f), 0 });
+	//	sim.SetAgentTargPos(i, { static_cast<float>(i / 5.0f), 950 });
+	//}
+
+	FillFromFile(sim, config.AgentsMaxCount);
 
 	sim.Start(true);
 
@@ -45,10 +50,7 @@ void TestFinder()
 void TestMover()
 {
 	cupat::ConfigSim config;
-	config.MapCountX = 100;
-	config.MapCountY = 100;
-	config.MapCellSize = 10;
-	config.AgentsCount = 2;
+	config.AgentsMaxCount = 2;
 	config.AgentSpeed = 1;
 	config.AgentRadius = 5;
 	config.PathFinderParallelAgents = 128;
@@ -59,7 +61,11 @@ void TestMover()
 	cupat::Sim sim;
 	sim.Init(config);
 
-	sim.SetAgentInitialPos(0, { 10, 5 });
+	std::vector<cupat::V2Int> obstacles;
+	std::vector<int> cells = ConvertObstacles(obstacles);
+	sim.FillMap(cells.data(), 10, 100, 100);
+
+	sim.AddAgent({ 10, 5 });
 	sim.SetAgentTargPos(0, { 10, 50});
 	sim.DebugSetAgentPath(0,
 		{
@@ -71,7 +77,7 @@ void TestMover()
 		}
 	);
 
-	sim.SetAgentInitialPos(1, { 10, 50 });
+	sim.AddAgent({ 10, 50 });
 	sim.SetAgentTargPos(1, { 10, 5 });
 	sim.DebugSetAgentPath(1,
 		{
@@ -93,7 +99,7 @@ void TestMover()
 	}
 
 	std::cout << "agents final poses:" << std::endl;
-	for (int i = 0; i < config.AgentsCount; i++)
+	for (int i = 0; i < config.AgentsMaxCount; i++)
 	{
 		std::cout << sim.GetAgentPos(i) << std::endl;
 	}
@@ -105,36 +111,43 @@ void TestMover()
 void TestFull()
 {
 	cupat::ConfigSim config;
-	config.MapCountX = 100;
-	config.MapCountY = 100;
-	config.MapCellSize = 10;
-	config.AgentsCount = 128;
+	config.AgentsMaxCount = 4;
 	config.AgentSpeed = 1;
 	config.AgentRadius = 2;
-	config.PathFinderParallelAgents = 128;
-	config.PathFinderThreadsPerAgents = 128;
+	config.PathFinderParallelAgents = 1024;
+	config.PathFinderThreadsPerAgents = 2;
 	config.PathFinderQueueCapacity = 32;
 	config.PathFinderHeuristicK = 1;
 
 	cupat::Sim sim;
 	sim.Init(config);
 
-	for (int i = 0; i < config.AgentsCount; i++)
-	{
-		sim.SetAgentInitialPos(i, { static_cast<float>(i * 5), 0 });
-		sim.SetAgentTargPos(i, { static_cast<float>(i * 5), 50 });
-	}
+	//std::vector<cupat::V2Int> obstacles;
+	//obstacles = GetObstaclesLines();
+	//obstacles = GetObstaclesZigZag();
+	//for (int x = 0; x < 100; x++)
+	//	obstacles.emplace_back(x, 50);
+	//std::vector<int> cells = ConvertObstacles(obstacles);
+	//sim.FillMap(cells.data(), 10, 100, 100);
+	//
+	//for (int i = 0; i < config.AgentsMaxCount; i++)
+	//{
+	//	sim.AddAgent(cupat::V2Float(i * 5, 0));
+	//	sim.SetAgentTargPos(i, cupat::V2Float(i * 5, 950));
+	//}
+
+	FillFromFile(sim, config.AgentsMaxCount);
 
 	sim.Start(false);
 
-	int stepsCount = 100;
+	int stepsCount = 10000;
 	for (int i = 0; i < stepsCount; i++)
 	{
 		sim.DoStep(1);
 	}
 
 	std::cout << "agents final poses:" << std::endl;
-	for (int i = 0; i < config.AgentsCount; i++)
+	for (int i = 0; i < config.AgentsMaxCount; i++)
 	{
 		std::cout << sim.GetAgentPos(i) << std::endl;
 	}
@@ -146,16 +159,21 @@ void TestFull()
 
 int main()
 {
-	TestFinder();
+	//TestFinder();
 	//TestMover();
-	//TestFull();
+	TestFull();
 
 	std::cout << "test done" << std::endl;
 	return 0;
 }
 
 
-void PlaceObstaclesLinesSub(cupat::Sim& sim, int offsetX, int lineY, int lineWidth, int space)
+void PlaceObstaclesLinesSub(
+	std::vector<cupat::V2Int>& obstacles, 
+	int offsetX, 
+	int lineY, 
+	int lineWidth, 
+	int space)
 {
 	int x = offsetX;
 	while (x < 100)
@@ -163,53 +181,102 @@ void PlaceObstaclesLinesSub(cupat::Sim& sim, int offsetX, int lineY, int lineWid
 		for (int i = 0; i < lineWidth; i++)
 		{
 			if (x >= 0 && x < 100)
-			{
-				sim.SetObstacle({ x, lineY });
-				//printf("X");
-			}
+				obstacles.emplace_back(x, lineY);
 			x += 1;
 		}
 		for (int i = 0; i < space; i++)
-		{
-			//if (x >= 0 && x < 100)
-			//	printf("-");
 			x += 1;
-		}
 	}
-	//printf("\n");
 }
 
-void PlaceObstaclesLines(cupat::Sim& sim)
+std::vector<cupat::V2Int> GetObstaclesLines()
 {
-	PlaceObstaclesLinesSub(sim, 0, 20, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18, 30, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18 * 2, 40, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18 * 3, 50, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18 * 4, 60, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18 * 5, 70, 20, 10);
-	PlaceObstaclesLinesSub(sim, -18 * 6, 80, 20, 10);
+	std::vector<cupat::V2Int> obstacles;
+	PlaceObstaclesLinesSub(obstacles, 0, 20, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18, 30, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18 * 2, 40, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18 * 3, 50, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18 * 4, 60, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18 * 5, 70, 20, 10);
+	PlaceObstaclesLinesSub(obstacles, -18 * 6, 80, 20, 10);
+	return obstacles;
 }
 
-void PlaceObstaclesZigZag(cupat::Sim& sim)
+std::vector<cupat::V2Int> GetObstaclesZigZag()
 {
+	std::vector<cupat::V2Int> obstacles;
+
 	for (int x = 10; x < 100; x++)
-		sim.SetObstacle({ x, 20 });
+		obstacles.emplace_back(x, 20);
 
 	for (int x = 0; x < 90; x++)
-		sim.SetObstacle({ x, 30 });
+		obstacles.emplace_back(x, 30);
 
 	for (int x = 10; x < 100; x++)
-		sim.SetObstacle({ x, 40 });
+		obstacles.emplace_back(x, 40);
 
 	for (int x = 0; x < 90; x++)
-		sim.SetObstacle({ x, 50 });
+		obstacles.emplace_back(x, 50);
 
 	for (int x = 10; x < 100; x++)
-		sim.SetObstacle({ x, 60 });
+		obstacles.emplace_back(x, 60);
 
 	for (int x = 0; x < 90; x++)
-		sim.SetObstacle({ x, 70 });
+		obstacles.emplace_back(x, 70);
 
 	for (int x = 10; x < 100; x++)
-		sim.SetObstacle({ x, 80 });
+		obstacles.emplace_back(x, 80);
+
+	return obstacles;
+}
+
+std::vector<int> ConvertObstacles(const std::vector<cupat::V2Int>& obstacles)
+{
+	std::vector<int> result;
+	for (int x = 0; x < 100; x++)
+		for (int y = 0; y < 100; y++)
+			result.push_back(0);
+
+	for (auto& obstacle : obstacles)
+	{
+		int i = obstacle.Y * 100 + obstacle.X;
+		result[i] = -1;
+	}
+
+	return result;
+}
+
+void FillFromFile(cupat::Sim& sim, int agentsCount)
+{
+	float cellSize = 200;
+	int cellsCountX = 200;
+	int cellsCountY = 200;
+
+	std::vector<int> cells;
+
+	std::ifstream file;
+	file.open("D:\\Projects\\cpp\\map.txt");
+	for (int i = 0; i < cellsCountX * cellsCountY; i++)
+	{
+		char v;
+		file >> v;
+		if (v == 'o')
+			cells.push_back(-1);
+		else
+			cells.push_back(0);
+	}
+	file.close();
+
+	sim.FillMap(cells.data(), cellSize, cellsCountX, cellsCountY);
+
+	file.open("D:\\Projects\\cpp\\agents.txt");
+	for (int i = 0; i < agentsCount; i++)
+	{
+		float initPosX, initPosY, targPosX, targPosY;
+		file >> initPosX >> initPosY >> targPosX >> targPosY;
+
+		int idx = sim.AddAgent(cupat::V2Float(initPosX, initPosY));
+		sim.SetAgentTargPos(idx, cupat::V2Float(targPosX, targPosY));
+	}
+	file.close();
 }

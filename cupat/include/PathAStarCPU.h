@@ -5,21 +5,20 @@
 #include "Agent.h"
 #include "misc/CuList.h"
 #include "misc/Cum.h"
-#include "misc/CuMatrix.h"
-#include "misc/V2Int.h"
+#include "misc/CuNodesMap.h"
 
 namespace cupat
 {
 	struct CpuFindPathAStarInput
 	{
-		Cum<CuMatrix<int>> Map;
+		Cum<CuNodesMap> Map;
 		Cum<CuList<Agent>> Agents;
 	};
 
 	struct __align__(16) AStarNodeCpu
 	{
-		V2Int Cell;
-		V2Int PrevCell;
+		int NodeIdx;
+		int PrevNodeIdx;
 		float F;
 		float G;
 	};
@@ -34,27 +33,40 @@ namespace cupat
 
 	inline void CpuFind(
 		Agent& agent,
-		CuMatrix<int> map,
-		std::unordered_map<V2Int, AStarNodeCpu> visited,
+		CuNodesMap map,
+		std::unordered_map<int, AStarNodeCpu> visited,
 		std::priority_queue<AStarNodeCpu, std::vector<AStarNodeCpu>, CpuPriorityQueueComparer>& frontier
 		)
 	{
 		constexpr float heuristicK = 1.0f;
-		V2Int neibsCellsDeltas[4] =
+
+		int startNodeIdx = -1;
+		if (!map.TryGetClosest(agent.CurrPos, &startNodeIdx))
 		{
-			{-1, 0},
-			{1, 0},
-			{0, -1},
-			{0, 1},
-		};
+			printf("agent curr pos is invalid node");
+			agent.State = EAgentState::Idle;
+			return;
+		}
+		int targNodeIdx = -1;
+		if (!map.TryGetClosest(agent.TargPos, &targNodeIdx))
+		{
+			printf("agent targ pos is invalid node");
+			agent.State = EAgentState::Idle;
+			return;
+		}
+		if (startNodeIdx == targNodeIdx)
+		{
+			agent.State = EAgentState::Idle;
+			return;
+		}
 
-		AStarNodeCpu start;
-		start.Cell = agent.TargCell;
-		start.F = V2Int::DistSqr(agent.CurrCell, agent.TargCell) * heuristicK;
-		start.G = 0;
+		AStarNodeCpu targNode;
+		targNode.NodeIdx = targNodeIdx;
+		targNode.F = map.GetDistSqr(startNodeIdx, targNodeIdx) * heuristicK;
+		targNode.G = 0;
 
-		visited[start.Cell] = start;
-		frontier.push(start);
+		visited[targNodeIdx] = targNode;
+		frontier.push(targNode);
 
 
 		bool isFound = false;
@@ -63,25 +75,21 @@ namespace cupat
 			auto curr = frontier.top();
 			frontier.pop();
 
-			for (auto& neibCellDelta : neibsCellsDeltas)
+			for (auto& neibNodeIdx : map.At(curr.NodeIdx).NeibsIdx)
 			{
-				auto neibCell = curr.Cell + neibCellDelta;
-				if (!map.IsValid(neibCell) || map.At(neibCell) != 0)
-					continue;
-
 				AStarNodeCpu neib;
-				neib.Cell = neibCell;
-				neib.PrevCell = curr.Cell;
+				neib.NodeIdx = neibNodeIdx;
+				neib.PrevNodeIdx = curr.NodeIdx;
 				neib.G = curr.G + 1;
-				neib.F = neib.G + V2Int::DistSqr(neibCell, agent.CurrCell) * heuristicK;
+				neib.F = neib.G + map.GetDistSqr(neibNodeIdx, startNodeIdx) * heuristicK;
 
-				if (visited.find(neibCell) == visited.end() || visited[neibCell].F > neib.F)
+				if (visited.find(neibNodeIdx) == visited.end() || visited[neibNodeIdx].F > neib.F)
 				{
-					visited[neibCell] = neib;
+					visited[neibNodeIdx] = neib;
 					frontier.push(neib);
 				}
 
-				if (neibCell == agent.CurrCell)
+				if (neibNodeIdx == startNodeIdx)
 				{
 					isFound = true;
 					break;
@@ -97,12 +105,12 @@ namespace cupat
 
 		//printf("path:\n");
 
-		V2Int iter = agent.CurrCell;
+		int nodeIdx = startNodeIdx;
 		do
 		{
-			iter = visited[visited[iter].PrevCell].Cell;
+			nodeIdx = visited[visited[nodeIdx].PrevNodeIdx].NodeIdx;
 			//printf("(%d, %d)\n", iter.X, iter.Y);
-		} while (iter != agent.TargCell);
+		} while (nodeIdx != targNodeIdx);
 
 		//printf("----------\n");
 	}
@@ -112,7 +120,7 @@ namespace cupat
 		auto map = input.Map.H(0);
 		auto agents = input.Agents.H(0);
 
-		std::unordered_map<V2Int, AStarNodeCpu> visited;
+		std::unordered_map<int, AStarNodeCpu> visited;
 
 		CpuPriorityQueueComparer comparer;
 

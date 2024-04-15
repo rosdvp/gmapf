@@ -30,11 +30,13 @@ namespace cupat
 			return _data[idx];
 		}
 
-		__host__ __device__ void Add(const T& val)
+		__host__ __device__ int Add(const T& val)
 		{
-			assert(*_count < *_capacity);
-			_data[*_count] = val;
+			int idx = *_count;
+			assert(idx < *_capacity);
+			_data[idx] = val;
 			*_count += 1;
+			return idx;
 		}
 
 		__device__ void AddAtomic(const T& val)

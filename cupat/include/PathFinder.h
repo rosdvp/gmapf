@@ -6,11 +6,11 @@
 
 #include "Agent.h"
 #include "Helpers.h"
-#include "PathsStorage.h"
 #include "misc/CuList.h"
 #include "misc/Cum.h"
-#include "misc/CuMatrix.h"
+#include "misc/CuNodesMap.h"
 #include "misc/CuQueue.h"
+#include "misc/CuVisitedMap.h"
 #include "misc/V2Int.h"
 
 namespace cupat
@@ -18,41 +18,40 @@ namespace cupat
 	struct __align__(8) PathRequest
 	{
 		int AgentIdx;
-		V2Int StartCell;
-		V2Int TargetCell;
+		int StartNodeIdx;
+		int TargetNodeIdx;
 		int FoundFlag;
-		V2Int MiddleCellFromStart;
-		V2Int MiddleCellFromTarget;
+		int MiddleNodeIdxFromStart;
+		int MiddleNodeIdxFromTarget;
 	};
 
-	struct __align__(8) AStarNode
+	struct __align__(8) PathNode
 	{
-		V2Int Cell;
-		V2Int PrevCell;
+		int NodeIdx;
+		int PrevNodeIdx;
 		float F;
 		float G;
 		int FromStart;
 	};
 
-	__global__ void KernelMarkCollections(
-		CuMatrix<int> map,
+	static __global__ void KernelMarkCollections(
+		CuNodesMap map,
 		CuList<PathRequest> requests,
-		Cum<CuMatrix<AStarNode>> visiteds,
-		Cum<CuList<AStarNode>> frontiers,
+		Cum<CuVisitedMap<PathNode>> visiteds,
+		Cum<CuList<PathNode>> frontiers,
 		int frontierCapacity,
-		Cum<CuQueue<AStarNode>> queues,
+		Cum<CuQueue<PathNode>> queues,
 		int queueCapacity)
 	{
 		int tid = threadIdx.x;
 		int bid = blockIdx.x;
 		int threadsPerAgent = blockDim.x;
 
-
 		int parallelAgentsCount = gridDim.x;
 
 		if (tid == 0)
 		{
-			visiteds.D(bid).Mark(map.CountX(), map.CountY());
+			visiteds.D(bid).Mark(map.Count());
 			frontiers.D(bid).Mark(frontierCapacity);
 		}
 
@@ -65,7 +64,7 @@ namespace cupat
 			requests.Mark(parallelAgentsCount);
 	}
 
-	__global__ void KernelClearRequests(
+	static __global__ void KernelClearRequests(
 		CuList<PathRequest> requests,
 		int* requestsCount)
 	{
@@ -73,9 +72,9 @@ namespace cupat
 		*requestsCount = 0;
 	}
 
-	__global__ void KernelClearCollections(
-		Cum<CuMatrix<AStarNode>> visiteds,
-		Cum<CuList<AStarNode>> frontiers)
+	static __global__ void KernelClearCollections(
+		Cum<CuVisitedMap<PathNode>> visiteds,
+		Cum<CuList<PathNode>> frontiers)
 	{
 		int bid = blockIdx.x;
 		int tid = threadIdx.x;
@@ -84,7 +83,7 @@ namespace cupat
 		auto visited = visiteds.D(bid);
 		for (int i = tid; i < visited.Count(); i += threadsCount)
 		{
-			visited.UnOccupy(i);
+			visited.UnVisit(i);
 			visited.At(i).FromStart = -1;
 		}
 
@@ -92,7 +91,8 @@ namespace cupat
 			frontiers.D(bid).RemoveAll();
 	}
 
-	__global__ void KernelPrepareSearch(
+	static __global__ void KernelPrepareSearch(
+		CuNodesMap map,
 		CuList<Agent> agents,
 		CuList<PathRequest> requests,
 		int* requestsCount)
@@ -103,13 +103,26 @@ namespace cupat
 		for (int i = tid; i < agents.Count(); i += threadsCount)
 		{
 			Agent& agent = agents.At(i);
-			if (!agent.IsNewPathRequested)
+			if (agent.State != EAgentState::Search)
 				continue;
 
-			if (agent.CurrCell == agent.TargCell)
+			int startNodeIdx = -1;
+			if (!map.TryGetClosest(agent.CurrPos, &startNodeIdx))
 			{
-				agent.IsTargetReached = true;
-				agent.IsNewPathRequested = false;
+				printf("agent %d curr pos is invalid node", i);
+				agent.State = EAgentState::Idle;
+				continue;
+			}
+			int targNodeIdx = -1;
+			if (!map.TryGetClosest(agent.TargPos, &targNodeIdx))
+			{
+				printf("agent %d targ pos is invalid node", i);
+				agent.State = EAgentState::Idle;
+				continue;
+			}
+			if (startNodeIdx == targNodeIdx)
+			{
+				agent.State = EAgentState::Idle;
 				continue;
 			}
 
@@ -121,34 +134,22 @@ namespace cupat
 			}
 			PathRequest req;
 			req.AgentIdx = i;
-			req.StartCell = agent.CurrCell;
-			req.TargetCell = agent.TargCell;
+			req.StartNodeIdx = startNodeIdx;
+			req.TargetNodeIdx = targNodeIdx;
 			req.FoundFlag = 0;
 			requests.AddAtomic(req);
 		}
 	}
 
-	__global__ void KernelSearch(
+	static __global__ void KernelSearch(
 		int queuesPerAgent,
 		float heuristicK,
-		CuMatrix<int> map,
+		CuNodesMap map,
 		CuList<PathRequest> requests,
-		Cum<CuMatrix<AStarNode>> visiteds,
-		Cum<CuList<AStarNode>> frontiers,
-		Cum<CuQueue<AStarNode>> queues)
+		Cum<CuVisitedMap<PathNode>> visiteds,
+		Cum<CuList<PathNode>> frontiers,
+		Cum<CuQueue<PathNode>> queues)
 	{
-		V2Int neibsCellsDeltas[8] =
-		{
-			{-1, 0},
-			{1, 0},
-			{0, -1},
-			{0, 1},
-			{1, 1},
-			{1, -1},
-			{-1, -1},
-			{-1, 1}
-		};
-
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		int reqIdx = tid / queuesPerAgent;
 		if (reqIdx >= requests.Count())
@@ -159,8 +160,8 @@ namespace cupat
 		int queueInBlockIdx = reqIdx * queuesPerAgent + queueIdx;
 
 		PathRequest& request = requests.At(reqIdx);
-		V2Int startCell = request.StartCell;
-		V2Int targCell = request.TargetCell;
+		int startNodeIdx = request.StartNodeIdx;
+		int targetNodeIdx = request.TargetNodeIdx;
 
 		auto visited = visiteds.D(reqIdx);
 		auto frontier = frontiers.D(reqIdx);
@@ -172,55 +173,67 @@ namespace cupat
 
 		if (queueIdx == 0)
 		{
-			AStarNode startNode;
-			startNode.Cell = startCell;
-			startNode.F = V2Int::DistSqr(startCell, targCell) * heuristicK;
+			PathNode startNode;
+			startNode.NodeIdx = startNodeIdx;
+			startNode.F = map.GetDistSqr(startNodeIdx, targetNodeIdx) * heuristicK;
 			startNode.G = 0;
 			startNode.FromStart = 1;
 			queue.Push(startNode);
 
-			int visitedIdx = visited.GetIdx(startNode.Cell.X, startNode.Cell.Y);
-			visited.TryOccupy(visitedIdx);
-			visited.At(visitedIdx) = startNode;
+			visited.TryVisit(startNodeIdx, startNode);
 		}
 		if (queueIdx == 1)
 		{
-			AStarNode targNode;
-			targNode.Cell = targCell;
-			targNode.F = V2Int::DistSqr(startCell, targCell) * heuristicK;
+			PathNode targNode;
+			targNode.NodeIdx = targetNodeIdx;
+			targNode.F = map.GetDistSqr(startNodeIdx, targetNodeIdx) * heuristicK;
 			targNode.G = 0;
 			targNode.FromStart = 0;
 			queue.Push(targNode);
 
-			int visitedIdx = visited.GetIdx(targNode.Cell.X, targNode.Cell.Y);
-			visited.TryOccupy(visitedIdx);
-			visited.At(visitedIdx) = targNode;
+			visited.TryVisit(targetNodeIdx, targNode);
 		}
 
 		while (request.FoundFlag == 0)
 		{
 			if (queue.Count() > 0)
 			{
-				AStarNode curr = queue.Pop();
+				PathNode curr = queue.Pop();
 				//printf("pop (%d, %d) %s\n", curr.Cell.X, curr.Cell.Y, curr.FromStart ? "from start" : "from target");
 
-				for (auto& neibCellDelta : neibsCellsDeltas)
+				for (auto& neibNodeIdx : map.At(curr.NodeIdx).NeibsIdx)
 				{
-					auto neibCell = curr.Cell + neibCellDelta;
-					if (!map.IsValid(neibCell.X, neibCell.Y) || map.At(neibCell.X, neibCell.Y) != 0)
-						continue;
+					if (neibNodeIdx == CuNodesMap::INVALID)
+						break;
 
 					float h = curr.FromStart
-						? V2Int::DistSqr(neibCell, targCell)
-						: V2Int::DistSqr(neibCell, startCell);
+						? map.GetDistSqr(neibNodeIdx, targetNodeIdx)
+						: map.GetDistSqr(neibNodeIdx, startNodeIdx);
 
-					AStarNode neib;
-					neib.Cell = neibCell;
-					neib.PrevCell = curr.Cell;
+					PathNode neib;
+					neib.NodeIdx = neibNodeIdx;
+					neib.PrevNodeIdx = curr.NodeIdx;
 					neib.G = curr.G + 1;
 					neib.F = neib.G + h * heuristicK;
 					neib.FromStart = curr.FromStart;
-					frontier.AddAtomic(neib);
+
+					if (visited.TryVisit(neibNodeIdx, neib))
+					{
+						frontier.AddAtomic(neib);
+					}
+					else
+					{
+						auto& existNode = visited.At(neib.NodeIdx);
+						if (existNode.FromStart != -1 && 
+							existNode.FromStart != neib.FromStart)
+						{
+							if (atomicExch(&request.FoundFlag, 1) == 0)
+							{
+								request.MiddleNodeIdxFromStart = neib.FromStart == 1 ? neib.PrevNodeIdx : existNode.NodeIdx;
+								request.MiddleNodeIdxFromTarget = neib.FromStart == 1 ? existNode.NodeIdx : neib.PrevNodeIdx;
+							}
+						}
+					}
 				}
 			}
 
@@ -228,21 +241,8 @@ namespace cupat
 
 			for (int i = queueIdx; i < frontier.Count(); i += queuesPerAgent)
 			{
-				auto& node = frontier.At(i);
-				int idx = visited.GetIdx(node.Cell.X, node.Cell.Y);
-				if (visited.TryOccupy(idx))
-				{
-					visited.At(idx) = node;
-					queue.Push(frontier.At(i));
-				}
-				else if (visited.At(idx).FromStart != -1 && node.FromStart != visited.At(idx).FromStart)
-				{
-					if (atomicExch(&request.FoundFlag, 1) == 0)
-					{
-						request.MiddleCellFromStart = node.FromStart == 1 ? node.PrevCell : visited.At(idx).Cell;
-						request.MiddleCellFromTarget = node.FromStart == 1 ? visited.At(idx).Cell : node.PrevCell;
-					}
-				}
+				auto& newNode = frontier.At(i);
+				queue.Push(newNode);
 			}
 
 			atomicAdd(sharedQueuesTotalCounts + requestInBlockIdx, queue.Count());
@@ -256,10 +256,10 @@ namespace cupat
 		}
 	}
 
-	__global__ void KernelBuildPath(
+	static __global__ void KernelBuildPath(
 		CuList<Agent> agents,
 		CuList<PathRequest> requests,
-		Cum<CuMatrix<AStarNode>> visiteds)
+		Cum<CuVisitedMap<PathNode>> visiteds)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
 		if (tid >= requests.Count())
@@ -274,49 +274,47 @@ namespace cupat
 
 		if (request.FoundFlag == 0)
 		{
-			agent.IsNewPathRequested = false;
-			agent.IsTargetReached = true;
-
+			agent.State = EAgentState::Idle;
 			printf("path not found\n");
 			return;
 		}
 
 		auto visited = visiteds.D(tid);
 
-		int pathLength = visited.At(request.MiddleCellFromStart).G
-			+ visited.At(request.MiddleCellFromTarget).G
+		int pathLength = visited.At(request.MiddleNodeIdxFromStart).G
+			+ visited.At(request.MiddleNodeIdxFromTarget).G
 			+ 1; // to add target cell
 
 		void* pPath;
-		cudaMalloc(&pPath, CuList<V2Int>::EvalSize(pathLength));
-		CuList<V2Int> path(pPath);
+		cudaMalloc(&pPath, CuList<int>::EvalSize(pathLength));
+		CuList<int> path(pPath);
 		path.Mark(pathLength);
 
-		V2Int iter = request.MiddleCellFromStart;
-		while (iter != request.StartCell)
+		int nodeIdx = request.MiddleNodeIdxFromStart;
+		while (nodeIdx != request.StartNodeIdx)
 		{
-			path.Add(iter);
-			iter = visited.At(iter).PrevCell;
+			path.Add(nodeIdx);
+			nodeIdx = visited.At(nodeIdx).PrevNodeIdx;
 		}
 
 		path.Reverse();
 
-		iter = request.MiddleCellFromTarget;
-		while (iter != request.TargetCell)
+		nodeIdx = request.MiddleNodeIdxFromTarget;
+		while (nodeIdx != request.TargetNodeIdx)
 		{
-			path.Add(iter);
-			iter = visited.At(iter).PrevCell;
+			path.Add(nodeIdx);
+			nodeIdx = visited.At(nodeIdx).PrevNodeIdx;
 		}
-		path.Add(request.TargetCell);
+		path.Add(request.TargetNodeIdx);
 
-		agent.IsNewPathRequested = false;
-		agent.IsTargetReached = false;
+		agent.State = EAgentState::Move;
 		agent.Path = pPath;
-		agent.PathNextCell = path.At(0);
+		agent.PathStepIdx = -1;
 	}
 
 
-	__global__ void KernelCheckPaths(
+	static __global__ void KernelCheckPaths(
+		CuNodesMap map,
 		CuList<Agent> agents)
 	{
 		for (int agentIdx = 0; agentIdx < agents.Count(); agentIdx++)
@@ -327,11 +325,11 @@ namespace cupat
 
 			printf("agent %d path:\n", agentIdx);
 
-			CuList<V2Int> path(agent.Path);
+			CuList<int> path(agent.Path);
 			for (int i = 0; i < path.Count(); i++)
 			{
-				auto& cell = path.At(i);
-				printf("(%d, %d)\n", cell.X, cell.Y);
+				auto pos = map.GetPos(path.At(i));
+				printf("(%f, %f)\n", pos.X, pos.Y);
 			}
 
 			printf("-------------------------\n");
@@ -358,7 +356,7 @@ namespace cupat
 
 
 		void Init(
-			const Cum<CuMatrix<int>>& map,
+			const Cum<CuNodesMap>& map,
 			const Cum<CuList<Agent>>& agents,
 			int parallelAgentsCount,
 			int threadsPerAgent,
@@ -376,7 +374,7 @@ namespace cupat
 			_requests.DAlloc(1, parallelAgentsCount);
 				
 			auto hMap = _map.H(0);
-			_visiteds.DAlloc(parallelAgentsCount, hMap.CountX(), hMap.CountY());
+			_visiteds.DAlloc(parallelAgentsCount, hMap.Count());
 
 			_frontiers.DAlloc(parallelAgentsCount, frontierCapacity);
 			_queues.DAlloc(parallelAgentsCount * threadsPerAgent, queueCapacity);
@@ -461,6 +459,7 @@ namespace cupat
 				return;
 
 			//KernelCheckPaths<<<1, 1, 0, _stream>>>(
+			//	_map.D(0),
 			//	_agents.D(0)
 			//);
 			//CudaCheck(cudaStreamSynchronize(_stream), "path finder, check paths");
@@ -478,14 +477,14 @@ namespace cupat
 		int _queuesPerAgent = 0;
 		float _heuristicK = 1.0f;
 
-		Cum<CuMatrix<int>> _map;
+		Cum<CuNodesMap> _map;
 		Cum<CuList<Agent>> _agents;
 
 		Cum<CuList<PathRequest>> _requests;
 
-		Cum<CuMatrix<AStarNode>> _visiteds;
-		Cum<CuList<AStarNode>> _frontiers;
-		Cum<CuQueue<AStarNode>> _queues;
+		Cum<CuVisitedMap<PathNode>> _visiteds;
+		Cum<CuList<PathNode>> _frontiers;
+		Cum<CuQueue<PathNode>> _queues;
 		int* _hRequestsCount = nullptr;
 		int* _dRequestsCount = nullptr;
 
@@ -531,6 +530,7 @@ namespace cupat
 				blocksCount += 1;
 
 			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream >>>(
+				_map.D(0),
 				_agents.D(0),
 				_requests.D(0),
 				_dRequestsCount

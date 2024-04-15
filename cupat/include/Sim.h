@@ -4,7 +4,6 @@
 #include "cuda.h"
 #include "Agent.h"
 #include "ConfigSim.h"
-#include "MapDesc.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
@@ -12,8 +11,7 @@ namespace cupat
 {
 	template<typename T>
 	class Cum;
-	template<typename T>
-	class CuMatrix;
+	class CuNodesMap;
 	template<typename T>
 	class CuList;
 	class AgentsMover;
@@ -26,11 +24,11 @@ namespace cupat
 
 		void Destroy();
 
-		void SetAgentInitialPos(int agentId, const V2Float& currPos);
+		int AddAgent(const V2Float& currPos);
 		void SetAgentTargPos(int agentId, const V2Float& targPos);
 		void DebugSetAgentPath(int agentId, const std::vector<V2Int>& path);
 
-		void SetObstacle(const V2Int& cell);
+		void FillMap(const int* cells, float cellSize, int cellsCountX, int cellsCountY);
 
 		void Start(bool isDebugSyncMode);
 
@@ -45,11 +43,9 @@ namespace cupat
 	private:
 		ConfigSim _config;
 
-		MapDesc _mapDesc;
-
 		CUcontext _cuContext;
 
-		Cum<CuMatrix<int>>* _map = nullptr;
+		Cum<CuNodesMap>* _map = nullptr;
 		Cum<CuList<Agent>>* _agents = nullptr;
 
 		PathFinder* _pathFinder = nullptr;

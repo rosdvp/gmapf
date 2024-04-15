@@ -4,7 +4,6 @@
 #include <iostream>
 
 #include "../include/misc/Cum.h"
-#include "../include/misc/CuMatrix.h"
 #include "../include/misc/CuList.h"
 #include "../include/AgentsMover.h"
 #include "../include/PathAStarCPU.h"
@@ -15,22 +14,12 @@ using namespace cupat;
 
 void Sim::Init(const ConfigSim& config)
 {
+	printf("v0\n");
+
 	_config = config;
 
-	_mapDesc = MapDesc(config.MapCellSize, config.MapCountX, config.MapCountY);
-
-	_map = new Cum<CuMatrix<int>>();
-	_map->HAllocAndMark(1, config.MapCountX, config.MapCountY);
-	auto hMap = _map->H(0);
-	for (int x = 0; x < config.MapCountX; x++)
-		for (int y = 0; y < config.MapCountY; y++)
-			hMap.At(x, y) = 0;
-
 	_agents = new Cum<CuList<Agent>>();
-	_agents->HAllocAndMark(1, config.AgentsCount);
-	auto hAgents = _agents->H(0);
-	for (int i = 0; i < config.AgentsCount; i++)
-		hAgents.Add({});
+	_agents->HAllocAndMark(1, config.AgentsMaxCount);
 }
 
 void Sim::Destroy()
@@ -57,37 +46,73 @@ void Sim::Destroy()
 	std::cout << "[cupat] sim destroyed" << std::endl;
 }
 
-void Sim::SetAgentInitialPos(int agentId, const V2Float& currPos)
+
+void Sim::FillMap(const int* cells, float cellSize, int cellsCountX, int cellsCountY)
 {
-	if (!_mapDesc.IsValidPos(currPos))
+	CuNodesMap::Desc desc;
+	desc.CellsCountX = cellsCountX;
+	desc.CellsCountY = cellsCountY;
+	desc.Count = cellsCountX * cellsCountY;
+	desc.CellSize = cellSize;
+
+	_map = new Cum<CuNodesMap>();
+	_map->HAllocAndMark(1, desc);
+	auto hMap = _map->H(0);
+
+	V2Int neibsDeltas[] = {
+		{-1, 0},
+		{1, 0},
+		{0, -1},
+		{0, 1},
+		{1, 1},
+		{1, -1},
+		{-1, -1},
+		{-1, 1}
+	};
+	for (int x = 0; x < cellsCountX; x++)
+		for (int y = 0; y < cellsCountY; y++)
+		{
+			int nodeIdx = y * cellsCountX + x;
+			if (cells[nodeIdx] == -1)
+				continue;
+			auto& node = hMap.At(nodeIdx);
+			node.Val = cells[nodeIdx];
+
+			V2Int cell(x, y);
+			int counter = 0;
+			for (auto& delta : neibsDeltas)
+			{
+				V2Int neib = cell + delta;
+				if (neib.X < 0 || neib.X >= cellsCountX || neib.Y < 0 || neib.Y >= cellsCountY)
+					continue;
+				int neibNode = neib.Y * cellsCountX + neib.X;
+				if (cells[neibNode] != -1)
+					node.NeibsIdx[counter++] = neibNode;
+			}
+		}
+}
+
+int Sim::AddAgent(const V2Float& currPos)
+{
+	if (!_map->H(0).TryGetClosest(currPos, nullptr))
 		throw std::exception(("initial pos " + currPos.ToString() + " is invalid").c_str());
 
-	Agent& agent = _agents->H(0).At(agentId);
-	agent.CurrPos = currPos;
-	agent.CurrCell = _mapDesc.PosToCell(currPos);
-	agent.IsTargetReached = true;
 
-	if (!_map->H(0).IsValid(agent.CurrCell))
-		throw std::exception(("initial cell " + agent.CurrCell.ToString() + " is invalid").c_str());
-	if (_map->H(0).At(agent.CurrCell) != 0)
-		throw std::exception(("initial cell " + agent.CurrCell.ToString() + " is busy").c_str());
+	Agent agent;
+	agent.State = EAgentState::Idle;
+	agent.CurrPos = currPos;
+
+	return _agents->H(0).Add(agent);
 }
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
-	if (!_mapDesc.IsValidPos(targPos))
+	if (!_map->H(0).TryGetClosest(targPos, nullptr))
 		throw std::exception(("target pos " + targPos.ToString() + " is invalid").c_str());
 
 	Agent& agent = _agents->H(0).At(agentId);
 	agent.TargPos = targPos;
-	agent.TargCell = _mapDesc.PosToCell(targPos);
-	agent.IsNewPathRequested = true;
-	agent.IsTargetReached = false;
-
-	if (!_map->H(0).IsValid(agent.CurrCell))
-		throw std::exception(("target cell " + agent.TargCell.ToString() + " is invalid").c_str());
-	if (_map->H(0).At(agent.CurrCell) != 0)
-		throw std::exception(("target cell " + agent.TargCell.ToString() + " is busy").c_str());
+	agent.State = EAgentState::Search;
 }
 
 void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)
@@ -99,15 +124,9 @@ void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)
 	cumPath.CopyToDevice();
 
 	Agent& agent = _agents->H(0).At(agentId);
+	agent.State = EAgentState::Move;
 	agent.Path = cumPath.DPtr(0);
-	agent.IsNewPathRequested = false;
-	agent.PathStepIdx = 0;
-	agent.PathNextCell = path[0];
-}
-
-void Sim::SetObstacle(const V2Int& cell)
-{
-	_map->H(0).At(cell) = -1;
+	agent.PathStepIdx = -1;
 }
 
 void Sim::Start(bool isDebugSyncMode)
@@ -124,6 +143,9 @@ void Sim::Start(bool isDebugSyncMode)
 	//CudaCatch();
 
 	CudaCatch();
+
+	
+
 	_map->CopyToDevice();
 	CudaCatch();
 	_agents->CopyToDevice();
@@ -143,12 +165,11 @@ void Sim::Start(bool isDebugSyncMode)
 	_agentsMover = new AgentsMover();
 	_agentsMover->DebugSyncMode = isDebugSyncMode;
 	_agentsMover->Init(
-		_mapDesc,
 		*_map,
 		*_agents,
 		_config.AgentSpeed,
 		_config.AgentRadius,
-		_config.AgentsCount
+		_config.AgentsMaxCount
 	);
 
 	CuDriverCatch(cuCtxPopCurrent(nullptr));

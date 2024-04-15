@@ -98,13 +98,11 @@
     <ClInclude Include="cupat\include\AgentsMover.h" />
     <ClInclude Include="cupat\include\ConfigSim.h" />
     <ClInclude Include="cupat\include\Helpers.h" />
-    <ClInclude Include="cupat\include\MapDesc.h" />
+    <ClInclude Include="cupat\include\misc\CuVisitedMap.h" />
     <ClInclude Include="cupat\include\PathAStarCPU.h" />
     <ClInclude Include="cupat\include\misc\CuList.h" />
     <ClInclude Include="cupat\include\misc\Cum.h" />
-    <ClInclude Include="cupat\include\misc\CuMap.h" />
-    <ClInclude Include="cupat\include\misc\CuMatrix.h" />
-    <ClInclude Include="cupat\include\PathsStorage.h" />
+    <ClInclude Include="cupat\include\misc\CuNodesMap.h" />
     <ClInclude Include="cupat\include\misc\CuQueue.h" />
     <ClInclude Include="cupat\include\misc\V2Int.h" />
     <ClInclude Include="cupat\include\PathFinder.h" />
