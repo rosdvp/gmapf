@@ -94,9 +94,21 @@
     <CudaCompile Include="cupat\src\Sim.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cupat\CDT\CDT.h" />
+    <ClInclude Include="cupat\CDT\CDT.hpp" />
+    <ClInclude Include="cupat\CDT\CDTUtils.h" />
+    <ClInclude Include="cupat\CDT\CDTUtils.hpp" />
+    <ClInclude Include="cupat\CDT\KDTree.h" />
+    <ClInclude Include="cupat\CDT\LocatorKDTree.h" />
+    <ClInclude Include="cupat\CDT\portable_nth_element.hpp" />
+    <ClInclude Include="cupat\CDT\predicates.h" />
+    <ClInclude Include="cupat\CDT\remove_at.hpp" />
+    <ClInclude Include="cupat\CDT\Triangulation.h" />
+    <ClInclude Include="cupat\CDT\Triangulation.hpp" />
     <ClInclude Include="cupat\include\Agent.h" />
     <ClInclude Include="cupat\include\AgentsMover.h" />
     <ClInclude Include="cupat\include\ConfigSim.h" />
+    <ClInclude Include="cupat\include\Defines.h" />
     <ClInclude Include="cupat\include\Helpers.h" />
     <ClInclude Include="cupat\include\misc\CuVisitedMap.h" />
     <ClInclude Include="cupat\include\PathAStarCPU.h" />

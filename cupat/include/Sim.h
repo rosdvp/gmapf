@@ -4,8 +4,10 @@
 #include "cuda.h"
 #include "Agent.h"
 #include "ConfigSim.h"
+#include "misc/CuNodesMap.h"
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
+#include "Defines.h"
 
 namespace cupat
 {
@@ -29,6 +31,7 @@ namespace cupat
 		void DebugSetAgentPath(int agentId, const std::vector<V2Int>& path);
 
 		void FillMap(const int* cells, float cellSize, int cellsCountX, int cellsCountY);
+		void FillMap(const std::vector<CuNodesMap::Node>& nodes);
 
 		void Start(bool isDebugSyncMode);
 

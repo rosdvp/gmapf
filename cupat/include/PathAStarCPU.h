@@ -41,14 +41,14 @@ namespace cupat
 		constexpr float heuristicK = 1.0f;
 
 		int startNodeIdx = -1;
-		if (!map.TryGetClosest(agent.CurrPos, &startNodeIdx))
+		if (!map.TryGetNodeIdx(agent.CurrPos, &startNodeIdx))
 		{
 			printf("agent curr pos is invalid node");
 			agent.State = EAgentState::Idle;
 			return;
 		}
 		int targNodeIdx = -1;
-		if (!map.TryGetClosest(agent.TargPos, &targNodeIdx))
+		if (!map.TryGetNodeIdx(agent.TargPos, &targNodeIdx))
 		{
 			printf("agent targ pos is invalid node");
 			agent.State = EAgentState::Idle;

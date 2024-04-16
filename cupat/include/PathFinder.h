@@ -107,16 +107,16 @@ namespace cupat
 				continue;
 
 			int startNodeIdx = -1;
-			if (!map.TryGetClosest(agent.CurrPos, &startNodeIdx))
+			if (!map.TryGetNodeIdx(agent.CurrPos, &startNodeIdx))
 			{
-				printf("agent %d curr pos is invalid node", i);
+				printf("agent %d curr pos (%f, %f) is invalid node\n", i, agent.CurrPos.X, agent.CurrPos.Y);
 				agent.State = EAgentState::Idle;
 				continue;
 			}
 			int targNodeIdx = -1;
-			if (!map.TryGetClosest(agent.TargPos, &targNodeIdx))
+			if (!map.TryGetNodeIdx(agent.TargPos, &targNodeIdx))
 			{
-				printf("agent %d targ pos is invalid node", i);
+				printf("agent %d targ pos (%f, %f) is invalid node\n", i, agent.TargPos.X, agent.TargPos.Y);
 				agent.State = EAgentState::Idle;
 				continue;
 			}

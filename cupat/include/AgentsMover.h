@@ -123,7 +123,7 @@ namespace cupat
 		avoidStep = avoidStep.GetRotated(10);
 
 		V2Float newPos = agent.CurrPos + avoidStep;
-		if (map.TryGetClosest(newPos, nullptr))
+		if (map.TryGetNodeIdx(newPos, nullptr))
 			agent.CurrPos = newPos;
 
 		//printf("avoid step (%f, %f)\n", avoidStep.X, avoidStep.Y);
@@ -149,16 +149,21 @@ namespace cupat
 		}
 		else
 		{
-			int newNode = -1;
-			if (!map.TryGetClosest(agent.CurrPos, &newNode))
-				return;
-			if (newNode != agent.PathStepNode)
+			if (!map.IsInNode(agent.CurrPos, agent.PathStepNode))
 				return;
 			CuList<int> path(agent.Path);
-			agent.PathStepIdx += 1;
+			if (agent.PathStepIdx < path.Count())
+				agent.PathStepIdx += 1;
 			if (agent.PathStepIdx == path.Count())
 			{
-				agent.State = EAgentState::Idle;
+				if ((agent.TargPos - agent.CurrPos).GetLength() > FLT_EPSILON)
+				{
+					agent.PathStepPos = agent.TargPos;
+				}
+				else
+				{
+					agent.State = EAgentState::Idle;
+				}
 			}
 			else
 			{
@@ -237,8 +242,8 @@ namespace cupat
 
 		~AgentsMover()
 		{
-			KernelFreeAgentsPaths<<<1, 1>>>(_agents.D(0));
-			CudaSyncAndCatch();
+			//KernelFreeAgentsPaths<<<1, 1>>>(_agents.D(0));
+			//CudaSyncAndCatch();
 
 			cudaStreamDestroy(_stream);
 			cudaEventDestroy(_evFindAgentsStart);

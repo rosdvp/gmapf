@@ -49,6 +49,7 @@ void Sim::Destroy()
 
 void Sim::FillMap(const int* cells, float cellSize, int cellsCountX, int cellsCountY)
 {
+#ifndef CUPAT_NAV_MESH
 	CuNodesMap::Desc desc;
 	desc.CellsCountX = cellsCountX;
 	desc.CellsCountY = cellsCountY;
@@ -90,13 +91,33 @@ void Sim::FillMap(const int* cells, float cellSize, int cellsCountX, int cellsCo
 					node.NeibsIdx[counter++] = neibNode;
 			}
 		}
+#else
+	throw std::exception();
+#endif
+}
+
+void Sim::FillMap(const std::vector<CuNodesMap::Node>& nodes)
+{
+#ifdef CUPAT_NAV_MESH
+
+	CuNodesMap::Desc desc;
+	desc.Count = nodes.size();
+
+	_map = new Cum<CuNodesMap>();
+	_map->HAllocAndMark(1, desc);
+	auto hMap = _map->H(0);
+
+	for (int i = 0; i < nodes.size(); i++)
+		hMap.At(i) = nodes[i];
+#else
+	throw std::exception();
+#endif
 }
 
 int Sim::AddAgent(const V2Float& currPos)
 {
-	if (!_map->H(0).TryGetClosest(currPos, nullptr))
+	if (!_map->H(0).TryGetNodeIdx(currPos, nullptr))
 		throw std::exception(("initial pos " + currPos.ToString() + " is invalid").c_str());
-
 
 	Agent agent;
 	agent.State = EAgentState::Idle;
@@ -107,7 +128,7 @@ int Sim::AddAgent(const V2Float& currPos)
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
-	if (!_map->H(0).TryGetClosest(targPos, nullptr))
+	if (!_map->H(0).TryGetNodeIdx(targPos, nullptr))
 		throw std::exception(("target pos " + targPos.ToString() + " is invalid").c_str());
 
 	Agent& agent = _agents->H(0).At(agentId);
