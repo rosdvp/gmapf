@@ -14,12 +14,12 @@ void FillFromFile(cupat::Sim& sim, int agentsCount);
 void TestFinder()
 {
 	cupat::ConfigSim config;
-	config.AgentsMaxCount = 1;
+	config.AgentsMaxCount = 2048;
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
-	config.PathFinderParallelAgents = 1024;
+	config.PathFinderParallelAgents = 2048;
 	config.PathFinderThreadsPerAgents = 2;
-	config.PathFinderQueueCapacity = 16;
+	config.PathFinderQueueCapacity = 8;
 	config.PathFinderHeuristicK = 1;
 
 	cupat::Sim sim;
@@ -34,7 +34,8 @@ void TestFinder()
 	//sim.FillMap(cells.data(), 10, 100, 100);
 
 	//AddObstaclesNavMeshEmpty(sim, 1000, 1000);
-	AddObstaclesNavMeshLines(sim);
+	//AddObstaclesNavMeshLines(sim);
+	AddObstaclesNavMeshZigZag(sim);
 
 	for (int i = 0; i < config.AgentsMaxCount; i++)
 	{
@@ -276,6 +277,7 @@ void AddObstaclesNavMesh(cupat::Sim& sim, const CDT::Triangulation<float>& cdt)
 
 		nodes.push_back(node);
 	}
+
 	sim.FillMap(nodes);
 }
 

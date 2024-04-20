@@ -6,6 +6,7 @@
 
 #include "Agent.h"
 #include "Helpers.h"
+#include "PathAllocator.h"
 #include "misc/CuList.h"
 #include "misc/Cum.h"
 #include "misc/CuNodesMap.h"
@@ -30,7 +31,7 @@ namespace cupat
 		int NodeIdx;
 		int PrevNodeIdx;
 		float F;
-		float G;
+		int G;
 		int FromStart;
 	};
 
@@ -106,21 +107,7 @@ namespace cupat
 			if (agent.State != EAgentState::Search)
 				continue;
 
-			int startNodeIdx = -1;
-			if (!map.TryGetNodeIdx(agent.CurrPos, &startNodeIdx))
-			{
-				printf("agent %d curr pos (%f, %f) is invalid node\n", i, agent.CurrPos.X, agent.CurrPos.Y);
-				agent.State = EAgentState::Idle;
-				continue;
-			}
-			int targNodeIdx = -1;
-			if (!map.TryGetNodeIdx(agent.TargPos, &targNodeIdx))
-			{
-				printf("agent %d targ pos (%f, %f) is invalid node\n", i, agent.TargPos.X, agent.TargPos.Y);
-				agent.State = EAgentState::Idle;
-				continue;
-			}
-			if (startNodeIdx == targNodeIdx)
+			if (agent.CurrNodeIdx == agent.TargNodeIdx)
 			{
 				agent.State = EAgentState::Idle;
 				continue;
@@ -134,8 +121,8 @@ namespace cupat
 			}
 			PathRequest req;
 			req.AgentIdx = i;
-			req.StartNodeIdx = startNodeIdx;
-			req.TargetNodeIdx = targNodeIdx;
+			req.StartNodeIdx = agent.CurrNodeIdx;
+			req.TargetNodeIdx = agent.TargNodeIdx;
 			req.FoundFlag = 0;
 			requests.AddAtomic(req);
 		}
@@ -259,57 +246,57 @@ namespace cupat
 	static __global__ void KernelBuildPath(
 		CuList<Agent> agents,
 		CuList<PathRequest> requests,
-		Cum<CuVisitedMap<PathNode>> visiteds)
+		Cum<CuVisitedMap<PathNode>> visiteds,
+		PathAllocator pathAllocator)
 	{
 		int tid = blockDim.x * blockIdx.x + threadIdx.x;
-		if (tid >= requests.Count())
+		int reqIdx = tid / 2;
+		if (reqIdx >= requests.Count())
 			return;
+		bool isFromStart = tid % 2 == 0;
 
-		PathRequest& request = requests.At(tid);
+		PathRequest& request = requests.At(reqIdx);
 		Agent& agent = agents.At(request.AgentIdx);
-
-		//printf("middle cells: from start (%d, %d), from target (%d, %d)\n",
-		//	request.MiddleCellFromStart.X, request.MiddleCellFromStart.Y,
-		//	request.MiddleCellFromTarget.X, request.MiddleCellFromTarget.Y);
 
 		if (request.FoundFlag == 0)
 		{
 			agent.State = EAgentState::Idle;
-			printf("path not found\n");
+			if (isFromStart)
+				printf("path not found\n");
 			return;
 		}
 
-		auto visited = visiteds.D(tid);
+		auto visited = visiteds.D(reqIdx);
+		int lengthFromStart = visited.At(request.MiddleNodeIdxFromStart).G;
+		int lengthFromTarget = visited.At(request.MiddleNodeIdxFromTarget).G + 1;
 
-		int pathLength = visited.At(request.MiddleNodeIdxFromStart).G
-			+ visited.At(request.MiddleNodeIdxFromTarget).G
-			+ 1; // to add target cell
-
-		void* pPath;
-		cudaMalloc(&pPath, CuList<int>::EvalSize(pathLength));
-		CuList<int> path(pPath);
-		path.Mark(pathLength);
-
-		int nodeIdx = request.MiddleNodeIdxFromStart;
-		while (nodeIdx != request.StartNodeIdx)
+		if (isFromStart)
 		{
-			path.Add(nodeIdx);
+			agent.State = EAgentState::Move;
+			agent.PathStepIdx = -1;
+
+			int pathLength = lengthFromStart + lengthFromTarget;
+
+			agent.Path = pathAllocator.GetPath(pathLength);
+			CuList<int> path(agent.Path);
+			path.PreAdd(pathLength);
+		}
+		__syncthreads();
+
+		CuList<int> path(agent.Path);
+		int idx = isFromStart ? lengthFromStart - 1 : lengthFromStart;
+		int idxStep = isFromStart ? -1 : 1;
+		int targNodeIdx = isFromStart ? request.StartNodeIdx : request.TargetNodeIdx;
+		int nodeIdx = isFromStart ? request.MiddleNodeIdxFromStart : request.MiddleNodeIdxFromTarget;
+
+		while(nodeIdx != targNodeIdx)
+		{
+			path.At(idx) = nodeIdx;
+			idx += idxStep;
 			nodeIdx = visited.At(nodeIdx).PrevNodeIdx;
 		}
-
-		path.Reverse();
-
-		nodeIdx = request.MiddleNodeIdxFromTarget;
-		while (nodeIdx != request.TargetNodeIdx)
-		{
-			path.Add(nodeIdx);
-			nodeIdx = visited.At(nodeIdx).PrevNodeIdx;
-		}
-		path.Add(request.TargetNodeIdx);
-
-		agent.State = EAgentState::Move;
-		agent.Path = pPath;
-		agent.PathStepIdx = -1;
+		if (!isFromStart)
+			path.At(idx) = targNodeIdx;
 	}
 
 
@@ -405,6 +392,8 @@ namespace cupat
 			cudaEventCreate(&_evSearchEnd);
 			cudaEventCreate(&_evBuildPathsStart);
 			cudaEventCreate(&_evBuildPathsEnd);
+
+			_pathAllocator.Init(_agents.H(0).Count(), _map.H(0).Count());
 		}
 
 		~PathFinder()
@@ -488,6 +477,9 @@ namespace cupat
 		int* _hRequestsCount = nullptr;
 		int* _dRequestsCount = nullptr;
 
+		PathAllocator _pathAllocator;
+
+
 		cudaStream_t _stream{};
 		cudaEvent_t _evClearCollectionsStart{};
 		cudaEvent_t _evClearCollectionsEnd{};
@@ -568,7 +560,7 @@ namespace cupat
 		{
 			cudaEventRecord(_evBuildPathsStart, _stream);
 
-			int threadsCount = *_hRequestsCount;
+			int threadsCount = *_hRequestsCount * 2;
 			int threadsPerBlock = 32;
 			int blocksCount = threadsCount / threadsPerBlock;
 			if (blocksCount * threadsPerBlock < threadsCount)
@@ -577,7 +569,8 @@ namespace cupat
 			KernelBuildPath<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_agents.D(0),
 				_requests.D(0),
-				_visiteds
+				_visiteds,
+				_pathAllocator
 			);
 
 			cudaEventRecord(_evBuildPathsEnd, _stream);

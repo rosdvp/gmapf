@@ -151,6 +151,9 @@ namespace cupat
 		{
 			if (!map.IsInNode(agent.CurrPos, agent.PathStepNode))
 				return;
+
+			agent.CurrNodeIdx = agent.PathStepNode;
+
 			CuList<int> path(agent.Path);
 			if (agent.PathStepIdx < path.Count())
 				agent.PathStepIdx += 1;

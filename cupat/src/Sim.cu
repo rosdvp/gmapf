@@ -116,24 +116,28 @@ void Sim::FillMap(const std::vector<CuNodesMap::Node>& nodes)
 
 int Sim::AddAgent(const V2Float& currPos)
 {
-	if (!_map->H(0).TryGetNodeIdx(currPos, nullptr))
+	int currNodeIdx = -1;
+	if (!_map->H(0).TryGetNodeIdx(currPos, &currNodeIdx))
 		throw std::exception(("initial pos " + currPos.ToString() + " is invalid").c_str());
 
 	Agent agent;
 	agent.State = EAgentState::Idle;
 	agent.CurrPos = currPos;
+	agent.CurrNodeIdx = currNodeIdx;
 
 	return _agents->H(0).Add(agent);
 }
 
 void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 {
-	if (!_map->H(0).TryGetNodeIdx(targPos, nullptr))
+	int targNodeIdx = -1;
+	if (!_map->H(0).TryGetNodeIdx(targPos, &targNodeIdx))
 		throw std::exception(("target pos " + targPos.ToString() + " is invalid").c_str());
 
 	Agent& agent = _agents->H(0).At(agentId);
-	agent.TargPos = targPos;
 	agent.State = EAgentState::Search;
+	agent.TargPos = targPos;
+	agent.TargNodeIdx = targNodeIdx;
 }
 
 void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)

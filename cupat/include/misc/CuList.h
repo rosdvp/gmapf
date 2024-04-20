@@ -46,6 +46,28 @@ namespace cupat
 			_data[idx] = val;
 		}
 
+		__host__ __device__ void PreAdd(int count)
+		{
+			assert(*_count + count <= *_capacity);
+			*_count += count;
+		}
+
+		__device__ bool TryPopLastAtomic(T& out)
+		{
+			int idx = atomicSub(_count, 1);
+			if (idx <= 0)
+			{
+				*_count = 0;
+				return false;
+			}
+			out = _data[idx-1];
+			return true;
+		}
+
+		__device__ T PopLastAtomic()
+		{
+		}
+
 		__host__ __device__ void RemoveAll()
 		{
 			*_count = 0;

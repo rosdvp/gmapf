@@ -14,7 +14,9 @@ namespace cupat
 	struct __align__(16) Agent
 	{
 		V2Float CurrPos;
+		int CurrNodeIdx;
 		V2Float TargPos;
+		int TargNodeIdx;
 
 		EAgentState State;
 
