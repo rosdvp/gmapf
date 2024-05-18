@@ -40,34 +40,19 @@ namespace cupat
 	{
 		constexpr float heuristicK = 1.0f;
 
-		int startNodeIdx = -1;
-		if (!map.TryGetNodeIdx(agent.CurrPos, &startNodeIdx))
-		{
-			printf("agent curr pos is invalid node");
-			agent.State = EAgentState::Idle;
-			return;
-		}
-		int targNodeIdx = -1;
-		if (!map.TryGetNodeIdx(agent.TargPos, &targNodeIdx))
-		{
-			printf("agent targ pos is invalid node");
-			agent.State = EAgentState::Idle;
-			return;
-		}
-		if (startNodeIdx == targNodeIdx)
+		if (agent.CurrNodeIdx == agent.TargNodeIdx)
 		{
 			agent.State = EAgentState::Idle;
 			return;
 		}
 
 		AStarNodeCpu targNode;
-		targNode.NodeIdx = targNodeIdx;
-		targNode.F = map.GetDistSqr(startNodeIdx, targNodeIdx) * heuristicK;
+		targNode.NodeIdx = agent.TargNodeIdx;
+		targNode.F = map.GetDistSqr(agent.CurrNodeIdx, agent.TargNodeIdx) * heuristicK;
 		targNode.G = 0;
 
-		visited[targNodeIdx] = targNode;
+		visited[agent.TargNodeIdx] = targNode;
 		frontier.push(targNode);
-
 
 		bool isFound = false;
 		while (!isFound && !frontier.empty())
@@ -77,11 +62,14 @@ namespace cupat
 
 			for (auto& neibNodeIdx : map.At(curr.NodeIdx).NeibsIdx)
 			{
+				if (neibNodeIdx == CuNodesMap::INVALID)
+					break;
+
 				AStarNodeCpu neib;
 				neib.NodeIdx = neibNodeIdx;
 				neib.PrevNodeIdx = curr.NodeIdx;
 				neib.G = curr.G + 1;
-				neib.F = neib.G + map.GetDistSqr(neibNodeIdx, startNodeIdx) * heuristicK;
+				neib.F = neib.G + map.GetDistSqr(neibNodeIdx, agent.CurrNodeIdx) * heuristicK;
 
 				if (visited.find(neibNodeIdx) == visited.end() || visited[neibNodeIdx].F > neib.F)
 				{
@@ -89,7 +77,7 @@ namespace cupat
 					frontier.push(neib);
 				}
 
-				if (neibNodeIdx == startNodeIdx)
+				if (neibNodeIdx == agent.CurrNodeIdx)
 				{
 					isFound = true;
 					break;
@@ -105,12 +93,12 @@ namespace cupat
 
 		//printf("path:\n");
 
-		int nodeIdx = startNodeIdx;
+		int nodeIdx = agent.CurrNodeIdx;
 		do
 		{
 			nodeIdx = visited[visited[nodeIdx].PrevNodeIdx].NodeIdx;
 			//printf("(%d, %d)\n", iter.X, iter.Y);
-		} while (nodeIdx != targNodeIdx);
+		} while (nodeIdx != agent.TargNodeIdx);
 
 		//printf("----------\n");
 	}
