@@ -8,6 +8,7 @@
 #include "../include/AgentsMover.h"
 #include "../include/PathAStarCPU.h"
 #include "../include/PathFinder.h"
+#include "../include/PathFinderSTMA.h"
 #include "../include/Helpers.h"
 
 using namespace cupat;
@@ -138,6 +139,8 @@ void Sim::SetAgentTargPos(int agentId, const V2Float& targPos)
 	agent.State = EAgentState::Search;
 	agent.TargPos = targPos;
 	agent.TargNodeIdx = targNodeIdx;
+
+	_isAnyAgentModifiedFromCpu = true;
 }
 
 void Sim::DebugSetAgentPath(int agentId, const std::vector<V2Int>& path)
@@ -168,9 +171,6 @@ void Sim::Start(bool isDebugSyncMode)
 	//CudaCatch();
 
 	CudaCatch();
-
-	
-
 	_map->CopyToDevice();
 	CudaCatch();
 	_agents->CopyToDevice();
@@ -186,6 +186,15 @@ void Sim::Start(bool isDebugSyncMode)
 		_config.PathFinderQueueCapacity,
 		_config.PathFinderHeuristicK
 	);
+	//_pathFinder = new STMA::PathFinderSTMA();
+	//_pathFinder->DebugSyncMode = isDebugSyncMode;
+	//_pathFinder->Init(
+	//	*_map,
+	//	*_agents,
+	//	_config.PathFinderParallelAgents,
+	//	_config.PathFinderQueueCapacity,
+	//	_config.PathFinderHeuristicK
+	//);
 
 	_agentsMover = new AgentsMover();
 	_agentsMover->DebugSyncMode = isDebugSyncMode;
@@ -206,13 +215,23 @@ void Sim::DoStep(float deltaTime)
 
 	CuDriverCatch(cuCtxPushCurrent(_cuContext));
 
+	TIME_STAMP(tPreCopy);
+	if (_isAnyAgentModifiedFromCpu)
+	{
+		_agents->CopyToDevice();
+		_isAnyAgentModifiedFromCpu = false;
+	}
+	auto durPreCopy = TIME_DIFF_MS(tPreCopy);
+
+	TIME_STAMP(tPre);
+
 	_pathFinder->AsyncPreFind();
 	_agentsMover->AsyncPreMove();
 
 	_pathFinder->Sync();
 	_agentsMover->Sync();
 
-	auto durPre = TIME_DIFF_MS(tStart);
+	auto durPre = TIME_DIFF_MS(tPre);
 	TIME_STAMP(tMain);
 
 	_pathFinder->AsyncFind();
@@ -232,17 +251,18 @@ void Sim::DoStep(float deltaTime)
 
 	_agents->CopyToHost();
 
-	auto durCopy = TIME_DIFF_MS(tCopy);
+	auto durPostCopy = TIME_DIFF_MS(tCopy);
 
 	CuDriverCatch(cuCtxPopCurrent(nullptr));
 
 	auto durStep = TIME_DIFF_MS(tStart);
 
 	TIME_APPLY_RECORD(durStep, _debugDurStepSum, _debugDurStepMax);
+	TIME_APPLY_RECORD(durPreCopy, _debugDurStepPreCopySum, _debugDurStepPreCopyMax);
 	TIME_APPLY_RECORD(durPre, _debugDurStepPreSum, _debugDurStepPreMax);
 	TIME_APPLY_RECORD(durMain, _debugDurStepMainSum, _debugDurStepMainMax);
 	TIME_APPLY_RECORD(durPost, _debugDurStepPostSum, _debugDurStepPostMax);
-	TIME_APPLY_RECORD(durCopy, _debugDurStepCopySum, _debugDurStepCopyMax);
+	TIME_APPLY_RECORD(durPostCopy, _debugDurStepPostCopySum, _debugDurStepPostCopyMax);
 	_debugStepsCount += 1;
 }
 
@@ -306,15 +326,21 @@ const V2Float& Sim::GetAgentPos(int agentId)
 	return _agents->H(0).At(agentId).CurrPos;
 }
 
+EAgentState cupat::Sim::GetAgentState(int agentId)
+{
+	return _agents->H(0).At(agentId).State;
+}
+
 void Sim::DebugDump() const
 {
 	std::cout << "----------------------" << std::endl;
 
 	TIME_STD_OUT("sim step", _debugDurStepSum, _debugDurStepMax, _debugStepsCount);
+	TIME_STD_OUT("sim step pre copy", _debugDurStepPreCopySum, _debugDurStepPreCopyMax, _debugStepsCount);
 	TIME_STD_OUT("sim step pre", _debugDurStepPreSum, _debugDurStepPreMax, _debugStepsCount);
 	TIME_STD_OUT("sim step main", _debugDurStepMainSum, _debugDurStepMainMax, _debugStepsCount);
 	TIME_STD_OUT("sim step post", _debugDurStepPostSum, _debugDurStepPostMax, _debugStepsCount);
-	TIME_STD_OUT("sim step copy", _debugDurStepCopySum, _debugDurStepCopyMax, _debugStepsCount);
+	TIME_STD_OUT("sim step post copy", _debugDurStepPostCopySum, _debugDurStepPostCopyMax, _debugStepsCount);
 
 	std::cout << std::endl;
 

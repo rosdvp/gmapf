@@ -18,8 +18,8 @@ void TestFinder()
 	config.AgentSpeed = 100;
 	config.AgentRadius = 100;
 	config.PathFinderParallelAgents = 2048;
-	config.PathFinderThreadsPerAgents = 2;
-	config.PathFinderQueueCapacity = 8;
+	//config.PathFinderThreadsPerAgents = 2;
+	config.PathFinderQueueCapacity = 16;
 	config.PathFinderHeuristicK = 1;
 
 	cupat::Sim sim;

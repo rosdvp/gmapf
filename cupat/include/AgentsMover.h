@@ -132,7 +132,8 @@ namespace cupat
 	__global__ void KernelUpdatePathProgress(
 		CuNodesMap map,
 		CuList<Agent> agents,
-		CuList<int> agentsIndices)
+		CuList<int> agentsIndices,
+		float lastStepErrorDist)
 	{
 		int tid = blockIdx.x * blockDim.x + threadIdx.x;
 		if (tid >= agentsIndices.Count())
@@ -159,7 +160,7 @@ namespace cupat
 				agent.PathStepIdx += 1;
 			if (agent.PathStepIdx == path.Count())
 			{
-				if ((agent.TargPos - agent.CurrPos).GetLength() > FLT_EPSILON)
+				if ((agent.TargPos - agent.CurrPos).GetLength() > FLT_EPSILON + lastStepErrorDist)
 				{
 					agent.PathStepPos = agent.TargPos;
 				}
@@ -215,8 +216,9 @@ namespace cupat
 			_agents = agents;
 
 			_moveSpeed = moveSpeed;
-			_collisionDistSqr = (agentRadius * 2) * (agentRadius * 2);
-			_collisionDist = agentRadius * 2;
+			_collisionDist = agentRadius * 2.5f;
+			_collisionDistSqr = _collisionDist * _collisionDist;
+			_lastStepErrorDist = agentRadius;
 
 			_procAgentsIndices.DAlloc(1, parallelAgentsCount);
 
@@ -291,7 +293,7 @@ namespace cupat
 			ResolveCollisions();
 			if (DebugSyncMode)
 				CudaSyncAndCatch();
-			UpdateCells();
+			UpdatePathProgress();
 			if (DebugSyncMode)
 				CudaSyncAndCatch();
 		}
@@ -313,6 +315,7 @@ namespace cupat
 		float _moveSpeed = 0;
 		float _collisionDistSqr = 0;
 		float _collisionDist = 0;
+		float _lastStepErrorDist = 0;
 
 		Cum<CuNodesMap> _map;
 		Cum<CuList<Agent>> _agents;
@@ -388,7 +391,7 @@ namespace cupat
 			cudaEventRecord(_evResolveCollisionsEnd, _stream);
 		}
 
-		void UpdateCells()
+		void UpdatePathProgress()
 		{
 			cudaEventRecord(_evUpdateCellsStart, _stream);
 
@@ -398,7 +401,8 @@ namespace cupat
 			KernelUpdatePathProgress<<<blocksCount, threadsPerBlock, 0, _stream>>>(
 				_map.D(0),
 				_agents.D(0),
-				_procAgentsIndices.D(0)
+				_procAgentsIndices.D(0),
+				_lastStepErrorDist
 			);
 
 			cudaEventRecord(_evUpdateCellsEnd, _stream);

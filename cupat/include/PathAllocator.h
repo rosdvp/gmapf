@@ -49,7 +49,7 @@ namespace cupat
 			cudaMalloc(&result, CuList<int>::EvalSize(capacity));
 			CuList<int> path(result);
 			path.Mark(capacity);
-			printf("[path allocator] new dynamic allocation\n");
+			//printf("[path allocator] new dynamic allocation\n");
 			return result;
 		}
 

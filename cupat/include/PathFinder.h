@@ -119,6 +119,13 @@ namespace cupat
 				*requestsCount = requests.Capacity();
 				return;
 			}
+
+			if (agent.Path != nullptr)
+			{
+				cudaFree(agent.Path);
+				agent.Path = nullptr;
+			}
+
 			PathRequest req;
 			req.AgentIdx = i;
 			req.StartNodeIdx = agent.CurrNodeIdx;

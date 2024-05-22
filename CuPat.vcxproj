@@ -119,6 +119,7 @@
     <ClInclude Include="cupat\include\misc\V2Int.h" />
     <ClInclude Include="cupat\include\PathFinder.h" />
     <ClInclude Include="cupat\include\PathAllocator.h" />
+    <ClInclude Include="cupat\include\PathFinderSTMA.h" />
     <ClInclude Include="cupat\include\Sim.h" />
     <ClInclude Include="cupat\include\misc\V2Float.h" />
   </ItemGroup>

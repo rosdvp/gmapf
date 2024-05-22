@@ -20,7 +20,7 @@ namespace cupat
 
 		EAgentState State;
 
-		void* Path;
+		void* Path = nullptr;
 		int PathStepIdx;
 		int PathStepNode;
 		V2Float PathStepPos;

@@ -19,6 +19,12 @@ namespace cupat
 	class AgentsMover;
 	class PathFinder;
 
+	namespace STMA
+	{
+		class PathFinderSTMA;
+	}
+
+
 	class Sim
 	{
 	public:
@@ -40,6 +46,7 @@ namespace cupat
 		void DoStepOnlyMover(float deltaTime);
 
 		const V2Float& GetAgentPos(int agentId);
+		EAgentState GetAgentState(int agentId);
 
 		void DebugDump() const;
 
@@ -51,19 +58,25 @@ namespace cupat
 		Cum<CuNodesMap>* _map = nullptr;
 		Cum<CuList<Agent>>* _agents = nullptr;
 
+		bool _isAnyAgentModifiedFromCpu = false;
+
 		PathFinder* _pathFinder = nullptr;
+		//STMA::PathFinderSTMA* _pathFinder = nullptr;
+		
 		AgentsMover* _agentsMover = nullptr;
 
 		float _debugDurStepSum = 0;
 		float _debugDurStepMax = 0;
+		float _debugDurStepPreCopySum = 0;
+		float _debugDurStepPreCopyMax = 0;
 		float _debugDurStepPreSum = 0;
 		float _debugDurStepPreMax = 0;
 		float _debugDurStepMainSum = 0;
 		float _debugDurStepMainMax = 0;
 		float _debugDurStepPostSum = 0;
 		float _debugDurStepPostMax = 0;
-		float _debugDurStepCopySum = 0;
-		float _debugDurStepCopyMax = 0;
+		float _debugDurStepPostCopySum = 0;
+		float _debugDurStepPostCopyMax = 0;
 		int _debugStepsCount = 0;
 	};
 }
