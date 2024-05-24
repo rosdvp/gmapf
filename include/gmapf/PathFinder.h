@@ -14,7 +14,7 @@
 #include "misc/CuVisitedMap.h"
 #include "misc/V2Int.h"
 
-namespace cupat
+namespace gmapf
 {
 	struct __align__(8) PathRequest
 	{
@@ -73,26 +73,7 @@ namespace cupat
 		*requestsCount = 0;
 	}
 
-	static __global__ void KernelClearCollections(
-		Cum<CuVisitedMap<PathNode>> visiteds,
-		Cum<CuList<PathNode>> frontiers)
-	{
-		int bid = blockIdx.x;
-		int tid = threadIdx.x;
-		int threadsCount = blockDim.x;
-
-		auto visited = visiteds.D(bid);
-		for (int i = tid; i < visited.Count(); i += threadsCount)
-		{
-			visited.UnVisit(i);
-			visited.At(i).FromStart = -1;
-		}
-
-		if (tid == 0)
-			frontiers.D(bid).RemoveAll();
-	}
-
-	static __global__ void KernelPrepareSearch(
+	static __global__ void KernelFindRequests(
 		CuNodesMap map,
 		CuList<Agent> agents,
 		CuList<PathRequest> requests,
@@ -133,6 +114,25 @@ namespace cupat
 			req.FoundFlag = 0;
 			requests.AddAtomic(req);
 		}
+	}
+
+	static __global__ void KernelClearCollections(
+		Cum<CuVisitedMap<PathNode>> visiteds,
+		Cum<CuList<PathNode>> frontiers)
+	{
+		int bid = blockIdx.x;
+		int tid = threadIdx.x;
+		int threadsCount = blockDim.x;
+
+		auto visited = visiteds.D(bid);
+		for (int i = tid; i < visited.Count(); i += threadsCount)
+		{
+			visited.UnVisit(i);
+			visited.At(i).FromStart = -1;
+		}
+
+		if (tid == 0)
+			frontiers.D(bid).RemoveAll();
 	}
 
 	static __global__ void KernelSearch(
@@ -334,19 +334,21 @@ namespace cupat
 	class PathFinder
 	{
 	public:
-		bool DebugSyncMode = false;
-
-		float DebugDurClearCollections = 0;
-		float DebugDurClearCollectionsMax = 0;
-		float DebugDurPrepareSearch = 0;
-		float DebugDurPrepareSearchMax = 0;
-		float DebugDurSearch = 0;
-		float DebugDurSearchMax = 0;
-		float DebugDurBuildPaths = 0;
-		float DebugDurBuildPathsMax = 0;
-		float DebugDurAttachPaths = 0;
-		float DebugDurAttachPathsMax = 0;
-		int DebugRecordsCount = 0;
+		bool IsDebug = false;
+		bool IsProfiler = false;
+		float ProfDurClearCollections = 0;
+		float ProfDurClearCollectionsSum = 0;
+		float ProfDurClearCollectionsMax = 0;
+		float ProfDurFindRequests = 0;
+		float ProfDurFindRequestsSum = 0;
+		float ProfDurFindRequestsMax = 0;
+		float ProfDurSearch = 0;
+		float ProfDurSearchSum = 0;
+		float ProfDurSearchMax = 0;
+		float ProfDurBuildPaths = 0;
+		float ProfDurBuildPathsSum = 0;
+		float ProfDurBuildPathsMax = 0;
+		int ProfRecordsCount = 0;
 
 
 		void Init(
@@ -391,14 +393,17 @@ namespace cupat
 				return;
 
 			cudaStreamCreate(&_stream);
-			cudaEventCreate(&_evClearCollectionsStart);
-			cudaEventCreate(&_evClearCollectionsEnd);
-			cudaEventCreate(&_evPrepareSearchStart);
-			cudaEventCreate(&_evPrepareSearchEnd);
-			cudaEventCreate(&_evSearchStart);
-			cudaEventCreate(&_evSearchEnd);
-			cudaEventCreate(&_evBuildPathsStart);
-			cudaEventCreate(&_evBuildPathsEnd);
+			if (IsProfiler)
+			{
+				cudaEventCreate(&_evClearCollectionsStart);
+				cudaEventCreate(&_evClearCollectionsEnd);
+				cudaEventCreate(&_evFindRequestsStart);
+				cudaEventCreate(&_evFindRequestsEnd);
+				cudaEventCreate(&_evSearchStart);
+				cudaEventCreate(&_evSearchEnd);
+				cudaEventCreate(&_evBuildPathsStart);
+				cudaEventCreate(&_evBuildPathsEnd);
+			}
 
 			_pathAllocator.Init(_agents.H(0).Count(), _map.H(0).Count());
 		}
@@ -406,14 +411,18 @@ namespace cupat
 		~PathFinder()
 		{
 			cudaStreamDestroy(_stream);
-			cudaEventDestroy(_evClearCollectionsStart);
-			cudaEventDestroy(_evClearCollectionsEnd);
-			cudaEventDestroy(_evPrepareSearchStart);
-			cudaEventDestroy(_evPrepareSearchEnd);
-			cudaEventDestroy(_evSearchStart);
-			cudaEventDestroy(_evSearchEnd);
-			cudaEventDestroy(_evBuildPathsStart);
-			cudaEventDestroy(_evBuildPathsEnd);
+
+			if (IsProfiler)
+			{
+				cudaEventDestroy(_evClearCollectionsStart);
+				cudaEventDestroy(_evClearCollectionsEnd);
+				cudaEventDestroy(_evFindRequestsStart);
+				cudaEventDestroy(_evFindRequestsEnd);
+				cudaEventDestroy(_evSearchStart);
+				cudaEventDestroy(_evSearchEnd);
+				cudaEventDestroy(_evBuildPathsStart);
+				cudaEventDestroy(_evBuildPathsEnd);
+			}
 
 			_requests.DFree();
 			_visiteds.DFree();
@@ -429,8 +438,8 @@ namespace cupat
 
 		void AsyncPreFind()
 		{
-			PrepareSearch();
-			if (DebugSyncMode)
+			FindRequests();
+			if (IsDebug)
 				CudaSyncAndCatch();
 		}
 
@@ -438,29 +447,27 @@ namespace cupat
 		{
 			if (*_hRequestsCount == 0)
 				return;
-			ClearCollections();
-			if (DebugSyncMode)
-				CudaSyncAndCatch();
 			Search();
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 			BuildPaths();
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 		}
 
 		void PostFind()
 		{
-			if (*_hRequestsCount == 0)
-				return;
+			//if (*_hRequestsCount > 0)
+			//{
+			//	KernelCheckPaths<<<1, 1, 0, _stream>>>(
+			//		_map.D(0),
+			//		_agents.D(0)
+			//	);
+			//	CudaCheck(cudaStreamSynchronize(_stream), "path finder, check paths");
+			//}
 
-			//KernelCheckPaths<<<1, 1, 0, _stream>>>(
-			//	_map.D(0),
-			//	_agents.D(0)
-			//);
-			//CudaCheck(cudaStreamSynchronize(_stream), "path finder, check paths");
-
-			DebugRecordDurs();
+			if (IsProfiler)
+				RecordProfiler();
 		}
 
 		void Sync()
@@ -490,37 +497,25 @@ namespace cupat
 		cudaStream_t _stream{};
 		cudaEvent_t _evClearCollectionsStart{};
 		cudaEvent_t _evClearCollectionsEnd{};
-		cudaEvent_t _evPrepareSearchStart{};
-		cudaEvent_t _evPrepareSearchEnd{};
+		cudaEvent_t _evFindRequestsStart{};
+		cudaEvent_t _evFindRequestsEnd{};
 		cudaEvent_t _evSearchStart{};
 		cudaEvent_t _evSearchEnd{};
 		cudaEvent_t _evBuildPathsStart{};
 		cudaEvent_t _evBuildPathsEnd{};
 
 
-		void ClearCollections()
+		void FindRequests()
 		{
-			cudaEventRecord(_evClearCollectionsStart, _stream);
-
-			int requestsCount = *_hRequestsCount;
-			int threadsPerBlock = 256;
-
-			KernelClearCollections<<<requestsCount, threadsPerBlock, 0, _stream>>>(
-				_visiteds,
-				_frontiers
-			);
-
-			cudaEventRecord(_evClearCollectionsEnd);
-		}
-
-		void PrepareSearch()
-		{
-			cudaEventRecord(_evPrepareSearchStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evFindRequestsStart, _stream);
 
 			KernelClearRequests<<<1, 1, 0, _stream>>>(
 				_requests.D(0),
 				_dRequestsCount
 			);
+			if (IsDebug)
+				CudaSyncAndCatch();
 
 			int threadsCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
@@ -528,7 +523,7 @@ namespace cupat
 			if (blocksCount * threadsPerBlock < threadsCount)
 				blocksCount += 1;
 
-			KernelPrepareSearch<<<blocksCount, threadsPerBlock, 0, _stream >>>(
+			KernelFindRequests<<<blocksCount, threadsPerBlock, 0, _stream >>>(
 				_map.D(0),
 				_agents.D(0),
 				_requests.D(0),
@@ -537,20 +532,36 @@ namespace cupat
 
 			cudaMemcpyAsync(_hRequestsCount, _dRequestsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
 
-			cudaEventRecord(_evPrepareSearchEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evFindRequestsEnd, _stream);
 		}
 
 		void Search()
 		{
+			if (IsProfiler)
+				cudaEventRecord(_evClearCollectionsStart, _stream);
+
+			int requestsCount = *_hRequestsCount;
+
+			KernelClearCollections << <requestsCount, 256, 0, _stream >> > (
+				_visiteds,
+				_frontiers
+				);
+			if (IsDebug)
+				CudaSyncAndCatch();
+
+			if (IsProfiler)
+				cudaEventRecord(_evClearCollectionsEnd);
+
+			if (IsProfiler)
+				cudaEventRecord(_evSearchStart, _stream);
+
 			int threadsCount = *_hRequestsCount * _queuesPerAgent;
 			int threadsPerBlock = 128;
 			int blocks = threadsCount / threadsPerBlock;
 			if (blocks * threadsPerBlock < threadsCount)
 				blocks += 1;
 
-			//printf("requests count %d\n", requestsCount);
-
-			cudaEventRecord(_evSearchStart, _stream);
 			KernelSearch<<<blocks, threadsPerBlock, 0, _stream>>>(
 				_queuesPerAgent,
 				_heuristicK,
@@ -560,12 +571,14 @@ namespace cupat
 				_frontiers,
 				_queues
 			);
-			cudaEventRecord(_evSearchEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evSearchEnd, _stream);
 		}
 
 		void BuildPaths()
 		{
-			cudaEventRecord(_evBuildPathsStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evBuildPathsStart, _stream);
 
 			int threadsCount = *_hRequestsCount * 2;
 			int threadsPerBlock = 32;
@@ -580,34 +593,37 @@ namespace cupat
 				_pathAllocator
 			);
 
-			cudaEventRecord(_evBuildPathsEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evBuildPathsEnd, _stream);
 		}
 
-		void DebugRecordDurs()
+		void RecordProfiler()
 		{
-			float t1 = 0;
-			cudaEventElapsedTime(&t1, _evClearCollectionsStart, _evClearCollectionsEnd);
-			DebugDurClearCollectionsMax = std::max(t1, DebugDurClearCollectionsMax);
-			DebugDurClearCollections += t1;
+			cudaEventElapsedTime(&ProfDurFindRequests, _evFindRequestsStart, _evFindRequestsEnd);
+			ProfDurFindRequestsMax = std::max(ProfDurFindRequests, ProfDurFindRequestsMax);
+			ProfDurFindRequestsSum += ProfDurFindRequests;
 
-			float t2 = 0;
-			cudaEventElapsedTime(&t2, _evPrepareSearchStart, _evPrepareSearchEnd);
-			DebugDurPrepareSearchMax = std::max(t2, DebugDurPrepareSearchMax);
-			DebugDurPrepareSearch += t2;
+			if (*_hRequestsCount == 0)
+			{
+				ProfDurClearCollections = 0;
+				ProfDurSearch = 0;
+				ProfDurBuildPaths = 0;
+				return;
+			}
 
-			float t3 = 0;
-			cudaEventElapsedTime(&t3, _evSearchStart, _evSearchEnd);
-			DebugDurSearchMax = std::max(t3, DebugDurSearchMax);
-			DebugDurSearch += t3;
+			cudaEventElapsedTime(&ProfDurClearCollections, _evClearCollectionsStart, _evClearCollectionsEnd);
+			ProfDurClearCollectionsMax = std::max(ProfDurClearCollections, ProfDurClearCollectionsMax);
+			ProfDurClearCollectionsSum += ProfDurClearCollections;
 
-			float t4 = 0;
-			cudaEventElapsedTime(&t4, _evBuildPathsStart, _evBuildPathsEnd);
-			DebugDurBuildPathsMax = std::max(t4, DebugDurBuildPathsMax);
-			DebugDurBuildPaths += t4;
+			cudaEventElapsedTime(&ProfDurSearch, _evSearchStart, _evSearchEnd);
+			ProfDurSearchMax = std::max(ProfDurSearch, ProfDurSearchMax);
+			ProfDurSearchSum += ProfDurSearch;
 
-			//printf("%f\n", temp);
+			cudaEventElapsedTime(&ProfDurBuildPaths, _evBuildPathsStart, _evBuildPathsEnd);
+			ProfDurBuildPathsMax = std::max(ProfDurBuildPaths, ProfDurBuildPathsMax);
+			ProfDurBuildPathsSum += ProfDurBuildPaths;
 
-			DebugRecordsCount += 1;
+			ProfRecordsCount += 1;
 		}
 	};
 }

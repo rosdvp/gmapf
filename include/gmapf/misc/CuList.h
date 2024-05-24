@@ -1,8 +1,8 @@
 #pragma once
 #include <cassert>
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 
-namespace cupat
+namespace gmapf
 {
 	template<typename T>
 	class CuList
@@ -12,9 +12,9 @@ namespace cupat
 		{
 			auto p = static_cast<char*>(ptr);
 			_capacity = reinterpret_cast<int*>(p);
-			p += 8;
+			p += sizeof(int*);
 			_count = reinterpret_cast<int*>(p);
-			p += 8;
+			p += sizeof(int*);
 			_data = reinterpret_cast<T*>(p);
 		}
 
@@ -98,7 +98,7 @@ namespace cupat
 
 		__host__ __device__ static constexpr size_t EvalSize(int capacity)
 		{
-			return 8 + 8 + sizeof(T) * capacity;
+			return sizeof(int*) + sizeof(int*) + sizeof(T) * capacity;
 		}
 
 	private:

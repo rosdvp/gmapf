@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <cuda_runtime.h>
 
-namespace cupat
+namespace gmapf
 {
 	template<typename T>
 	class Cum

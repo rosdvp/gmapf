@@ -3,7 +3,7 @@
 #include "misc/Cum.h"
 #include "misc/CuNodesMap.h"
 
-namespace cupat
+namespace gmapf
 {
 	__global__ static void KernelPreAlloc(
 		CuList<void*> paths,

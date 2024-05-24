@@ -1,8 +1,8 @@
 #pragma once
 
-namespace cupat
+namespace gmapf
 {
-	struct ConfigSim
+	struct Config
 	{
 		int AgentsMaxCount;
 		float AgentRadius;
@@ -12,5 +12,8 @@ namespace cupat
 		int PathFinderThreadsPerAgents;
 		int PathFinderQueueCapacity;
 		float PathFinderHeuristicK;
+
+		bool IsDebug = false;
+		bool IsProfiler = false;
 	};
 }

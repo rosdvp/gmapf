@@ -2,7 +2,7 @@
 #include "misc/V2Float.h"
 #include "misc/V2Int.h"
 
-namespace cupat
+namespace gmapf
 {
 	enum class EAgentState
 	{

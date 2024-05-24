@@ -1,8 +1,8 @@
 #pragma once
 #include <cassert>
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 
-namespace cupat
+namespace gmapf
 {
 	template<typename T>
 	class CuQueue
@@ -13,9 +13,9 @@ namespace cupat
 		{
 			auto p = static_cast<char*>(ptr);
 			_capacity = reinterpret_cast<int*>(p);
-			p += 8;
+			p += sizeof(int*);
 			_count = reinterpret_cast<int*>(p);
-			p += 8;
+			p += sizeof(int*);
 			_data = reinterpret_cast<T*>(p);
 		}
 
@@ -60,17 +60,12 @@ namespace cupat
 					_data[i] = _data[i + 1];
 			}
 			_data[idx] = item;
-
-			//printf("queue push (%d, %d):\n", item.Cell.X, item.Cell.Y);
-			//for (int i = 0; i < *_count; i++)
-			//	printf("[%d] (%d, %d) F=(%f)\n", i, _data[i].Cell.X, _data[i].Cell.Y, _data[i].F);
 		}
 
 		__host__ __device__ T Pop()
 		{
 			assert(*_count > 0);
 			*_count -= 1;
-			//printf("pop (%d, %d)\n", _data[*_count].Cell.X, _data[*_count].Cell.Y);
 			return _data[*_count];
 		}
 
@@ -81,7 +76,7 @@ namespace cupat
 
 		__host__ __device__ static constexpr size_t EvalSize(int capacity)
 		{
-			return 8 + 8 + sizeof(T) * capacity;
+			return sizeof(int*) + sizeof(int*) + sizeof(T) * capacity;
 		}
 
 	private:

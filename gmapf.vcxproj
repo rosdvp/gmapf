@@ -12,7 +12,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A2237F55-F0B1-470C-B64B-F49F57A95172}</ProjectGuid>
-    <RootNamespace>CuPat</RootNamespace>
+    <RootNamespace>gmapf</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <CudaToolkitCustomDir>D:\Programs\CudaToolkit</CudaToolkitCustomDir>
   </PropertyGroup>
@@ -52,7 +52,6 @@
       <PreprocessorDefinitions>WIN32;WIN64;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
-      <AdditionalIncludeDirectories>D:\Projects\cpp\CuPat\cupat\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -91,37 +90,36 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="cupat\src\Sim.cu" />
+    <CudaCompile Include="src\GMAPF.cu" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="cupat\CDT\CDT.h" />
-    <ClInclude Include="cupat\CDT\CDT.hpp" />
-    <ClInclude Include="cupat\CDT\CDTUtils.h" />
-    <ClInclude Include="cupat\CDT\CDTUtils.hpp" />
-    <ClInclude Include="cupat\CDT\KDTree.h" />
-    <ClInclude Include="cupat\CDT\LocatorKDTree.h" />
-    <ClInclude Include="cupat\CDT\portable_nth_element.hpp" />
-    <ClInclude Include="cupat\CDT\predicates.h" />
-    <ClInclude Include="cupat\CDT\remove_at.hpp" />
-    <ClInclude Include="cupat\CDT\Triangulation.h" />
-    <ClInclude Include="cupat\CDT\Triangulation.hpp" />
-    <ClInclude Include="cupat\include\Agent.h" />
-    <ClInclude Include="cupat\include\AgentsMover.h" />
-    <ClInclude Include="cupat\include\ConfigSim.h" />
-    <ClInclude Include="cupat\include\Defines.h" />
-    <ClInclude Include="cupat\include\Helpers.h" />
-    <ClInclude Include="cupat\include\misc\CuVisitedMap.h" />
-    <ClInclude Include="cupat\include\PathAStarCPU.h" />
-    <ClInclude Include="cupat\include\misc\CuList.h" />
-    <ClInclude Include="cupat\include\misc\Cum.h" />
-    <ClInclude Include="cupat\include\misc\CuNodesMap.h" />
-    <ClInclude Include="cupat\include\misc\CuQueue.h" />
-    <ClInclude Include="cupat\include\misc\V2Int.h" />
-    <ClInclude Include="cupat\include\PathFinder.h" />
-    <ClInclude Include="cupat\include\PathAllocator.h" />
-    <ClInclude Include="cupat\include\PathFinderSTMA.h" />
-    <ClInclude Include="cupat\include\Sim.h" />
-    <ClInclude Include="cupat\include\misc\V2Float.h" />
+    <ClInclude Include="include\CDT\CDT.h" />
+    <ClInclude Include="include\CDT\CDT.hpp" />
+    <ClInclude Include="include\CDT\CDTUtils.h" />
+    <ClInclude Include="include\CDT\CDTUtils.hpp" />
+    <ClInclude Include="include\CDT\KDTree.h" />
+    <ClInclude Include="include\CDT\LocatorKDTree.h" />
+    <ClInclude Include="include\CDT\portable_nth_element.hpp" />
+    <ClInclude Include="include\CDT\predicates.h" />
+    <ClInclude Include="include\CDT\remove_at.hpp" />
+    <ClInclude Include="include\CDT\Triangulation.h" />
+    <ClInclude Include="include\CDT\Triangulation.hpp" />
+    <ClInclude Include="include\gmapf\Agent.h" />
+    <ClInclude Include="include\gmapf\AgentsMover.h" />
+    <ClInclude Include="include\gmapf\Config.h" />
+    <ClInclude Include="include\gmapf\GMAPF.h" />
+    <ClInclude Include="include\gmapf\Helpers.h" />
+    <ClInclude Include="include\gmapf\misc\CuList.h" />
+    <ClInclude Include="include\gmapf\misc\Cum.h" />
+    <ClInclude Include="include\gmapf\misc\CuNodesMap.h" />
+    <ClInclude Include="include\gmapf\misc\CuQueue.h" />
+    <ClInclude Include="include\gmapf\misc\CuVisitedMap.h" />
+    <ClInclude Include="include\gmapf\misc\V2Float.h" />
+    <ClInclude Include="include\gmapf\misc\V2Int.h" />
+    <ClInclude Include="include\gmapf\PathAllocator.h" />
+    <ClInclude Include="include\gmapf\PathFinder.h" />
+    <ClInclude Include="include\gmapf\PathFinderCPU.h" />
+    <ClInclude Include="include\gmapf\PathFinderSTMA.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

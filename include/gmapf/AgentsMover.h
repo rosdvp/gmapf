@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cuda_runtime.h>
-#include <device_launch_parameters.h>
 
 #include "Agent.h"
 #include "Helpers.h"
@@ -10,7 +9,7 @@
 #include "misc/Cum.h"
 #include "misc/CuNodesMap.h"
 
-namespace cupat
+namespace gmapf
 {
 	static __global__ void KernelMarkCollections(
 		CuList<int> agentsIndices,
@@ -192,17 +191,21 @@ namespace cupat
 	class AgentsMover
 	{
 	public:
-		bool DebugSyncMode = false;
-
-		float DebugDurFindAgents = 0;
-		float DebugDurFindAgentsMax = 0;
-		float DebugDurMoveAgents = 0;
-		float DebugDurMoveAgentsMax = 0;
-		float DebugDurResolveCollisions = 0;
-		float DebugDurResolveCollisionsMax = 0;
-		float DebugDurUpdateCell = 0;
-		float DebugDurUpdateCellMax = 0;
-		int DebugRecordsCount = 0;
+		bool IsDebug = false;
+		bool IsProfiler = false;
+		float ProfDurFindAgents = 0;
+		float ProfDurFindAgentsSum = 0;
+		float ProfDurFindAgentsMax = 0;
+		float ProfDurMoveAgents = 0;
+		float ProfDurMoveAgentsSum = 0;
+		float ProfDurMoveAgentsMax = 0;
+		float ProfDurResolveCollisions = 0;
+		float ProfDurResolveCollisionsSum = 0;
+		float ProfDurResolveCollisionsMax = 0;
+		float ProfDurUpdatePathProgress = 0;
+		float ProfDurUpdatePathProgressSum = 0;
+		float ProfDurUpdatePathProgressMax = 0;
+		int ProfRecordsCount = 0;
 
 
 		void Init(
@@ -227,14 +230,17 @@ namespace cupat
 			cudaMalloc(&_dProcAgentsCount, sizeof(int));
 
 			cudaStreamCreate(&_stream);
-			cudaEventCreate(&_evFindAgentsStart);
-			cudaEventCreate(&_evFindAgentsEnd);
-			cudaEventCreate(&_evMoveAgentsStart);
-			cudaEventCreate(&_evMoveAgentsEnd);
-			cudaEventCreate(&_evResolveCollisionsStart);
-			cudaEventCreate(&_evResolveCollisionsEnd);
-			cudaEventCreate(&_evUpdateCellsStart);
-			cudaEventCreate(&_evUpdateCellsEnd);
+			if (IsProfiler)
+			{
+				cudaEventCreate(&_evFindAgentsStart);
+				cudaEventCreate(&_evFindAgentsEnd);
+				cudaEventCreate(&_evMoveAgentsStart);
+				cudaEventCreate(&_evMoveAgentsEnd);
+				cudaEventCreate(&_evResolveCollisionsStart);
+				cudaEventCreate(&_evResolveCollisionsEnd);
+				cudaEventCreate(&_evUpdatePathProgressStart);
+				cudaEventCreate(&_evUpdatePathProgressEnd);
+			}
 
 			KernelMarkCollections<<<1, 1>>>(
 				_procAgentsIndices.D(0), 
@@ -251,14 +257,17 @@ namespace cupat
 			//CudaSyncAndCatch();
 
 			cudaStreamDestroy(_stream);
-			cudaEventDestroy(_evFindAgentsStart);
-			cudaEventDestroy(_evFindAgentsEnd);
-			cudaEventDestroy(_evMoveAgentsStart);
-			cudaEventDestroy(_evMoveAgentsEnd);
-			cudaEventDestroy(_evResolveCollisionsStart);
-			cudaEventDestroy(_evResolveCollisionsEnd);
-			cudaEventDestroy(_evUpdateCellsStart);
-			cudaEventDestroy(_evUpdateCellsEnd);
+			if (IsProfiler)
+			{
+				cudaEventDestroy(_evFindAgentsStart);
+				cudaEventDestroy(_evFindAgentsEnd);
+				cudaEventDestroy(_evMoveAgentsStart);
+				cudaEventDestroy(_evMoveAgentsEnd);
+				cudaEventDestroy(_evResolveCollisionsStart);
+				cudaEventDestroy(_evResolveCollisionsEnd);
+				cudaEventDestroy(_evUpdatePathProgressStart);
+				cudaEventDestroy(_evUpdatePathProgressEnd);
+			}
 
 			_procAgentsIndices.DFree();
 
@@ -275,10 +284,10 @@ namespace cupat
 				_procAgentsIndices.D(0),
 				_dProcAgentsCount
 			);
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 			FindMovingAgents();
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 		}
 
@@ -288,22 +297,20 @@ namespace cupat
 				return;
 
 			MoveAgents(_moveSpeed * deltaTime);
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 			ResolveCollisions();
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 			UpdatePathProgress();
-			if (DebugSyncMode)
+			if (IsDebug)
 				CudaSyncAndCatch();
 		}
 
 		void PostMove()
 		{
-			if (*_hProcAgentsCount == 0)
-				return;
-
-			DebugRecordDurs();
+			if (IsProfiler)
+				RecordProfiler();
 		}
 
 		void Sync()
@@ -331,13 +338,14 @@ namespace cupat
 		cudaEvent_t _evMoveAgentsEnd{};
 		cudaEvent_t _evResolveCollisionsStart{};
 		cudaEvent_t _evResolveCollisionsEnd{};
-		cudaEvent_t _evUpdateCellsStart{};
-		cudaEvent_t _evUpdateCellsEnd{};
+		cudaEvent_t _evUpdatePathProgressStart{};
+		cudaEvent_t _evUpdatePathProgressEnd{};
 
 
 		void FindMovingAgents()
 		{
-			cudaEventRecord(_evFindAgentsStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evFindAgentsStart, _stream);
 
 			int threadsCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
@@ -352,12 +360,14 @@ namespace cupat
 			);
 			cudaMemcpyAsync(_hProcAgentsCount, _dProcAgentsCount, sizeof(int), cudaMemcpyDeviceToHost, _stream);
 
-			cudaEventRecord(_evFindAgentsEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evFindAgentsEnd, _stream);
 		}
 
 		void MoveAgents(float agentStep)
 		{
-			cudaEventRecord(_evMoveAgentsStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evMoveAgentsStart, _stream);
 
 			int threadsCount = *_hProcAgentsCount;
 			int threadsPerBlock = 128;
@@ -371,12 +381,14 @@ namespace cupat
 				agentStep
 			);
 
-			cudaEventRecord(_evMoveAgentsEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evMoveAgentsEnd, _stream);
 		}
 
 		void ResolveCollisions()
 		{
-			cudaEventRecord(_evResolveCollisionsStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evResolveCollisionsStart, _stream);
 
 			int blocksCount = _agents.H(0).Count();
 			int threadsPerBlock = 128;
@@ -388,12 +400,14 @@ namespace cupat
 				_collisionDist
 			);
 
-			cudaEventRecord(_evResolveCollisionsEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evResolveCollisionsEnd, _stream);
 		}
 
 		void UpdatePathProgress()
 		{
-			cudaEventRecord(_evUpdateCellsStart, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evUpdatePathProgressStart, _stream);
 
 			int blocksCount = *_hProcAgentsCount;
 			int threadsPerBlock = 128;
@@ -405,32 +419,37 @@ namespace cupat
 				_lastStepErrorDist
 			);
 
-			cudaEventRecord(_evUpdateCellsEnd, _stream);
+			if (IsProfiler)
+				cudaEventRecord(_evUpdatePathProgressEnd, _stream);
 		}
 
-		void DebugRecordDurs()
+		void RecordProfiler()
 		{
-			float t1 = 0;
-			cudaEventElapsedTime(&t1, _evFindAgentsStart, _evFindAgentsEnd);
-			DebugDurFindAgentsMax = std::max(t1, DebugDurFindAgentsMax);
-			DebugDurFindAgents += t1;
+			cudaEventElapsedTime(&ProfDurFindAgents, _evFindAgentsStart, _evFindAgentsEnd);
+			ProfDurFindAgentsMax = std::max(ProfDurFindAgents, ProfDurFindAgentsMax);
+			ProfDurFindAgentsSum += ProfDurFindAgents;
 
-			float t2 = 0;
-			cudaEventElapsedTime(&t2, _evMoveAgentsStart, _evMoveAgentsEnd);
-			DebugDurMoveAgentsMax = std::max(t2, DebugDurMoveAgentsMax);
-			DebugDurMoveAgents += t2;
+			if (*_hProcAgentsCount == 0)
+			{
+				ProfDurMoveAgents = 0;
+				ProfDurResolveCollisions = 0;
+				ProfDurUpdatePathProgress = 0;
+				return;
+			}
 
-			float t3 = 0;
-			cudaEventElapsedTime(&t3, _evResolveCollisionsStart, _evResolveCollisionsEnd);
-			DebugDurResolveCollisionsMax = std::max(t3, DebugDurResolveCollisionsMax);
-			DebugDurResolveCollisions += t3;
+			cudaEventElapsedTime(&ProfDurMoveAgents, _evMoveAgentsStart, _evMoveAgentsEnd);
+			ProfDurMoveAgentsMax = std::max(ProfDurMoveAgents, ProfDurMoveAgentsMax);
+			ProfDurMoveAgentsSum += ProfDurMoveAgents;
 
-			float t4 = 0;
-			cudaEventElapsedTime(&t4, _evUpdateCellsStart, _evUpdateCellsEnd);
-			DebugDurUpdateCellMax = std::max(t4, DebugDurUpdateCellMax);
-			DebugDurUpdateCell += t4;
+			cudaEventElapsedTime(&ProfDurResolveCollisions, _evResolveCollisionsStart, _evResolveCollisionsEnd);
+			ProfDurResolveCollisionsMax = std::max(ProfDurResolveCollisions, ProfDurResolveCollisionsMax);
+			ProfDurResolveCollisionsSum += ProfDurResolveCollisions;
 
-			DebugRecordsCount += 1;
+			cudaEventElapsedTime(&ProfDurUpdatePathProgress, _evUpdatePathProgressStart, _evUpdatePathProgressEnd);
+			ProfDurUpdatePathProgressMax = std::max(ProfDurUpdatePathProgress, ProfDurUpdatePathProgressMax);
+			ProfDurUpdatePathProgressSum += ProfDurUpdatePathProgress;
+
+			ProfRecordsCount += 1;
 		}
 	};
 }

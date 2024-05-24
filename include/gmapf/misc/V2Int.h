@@ -1,9 +1,8 @@
 #pragma once
 #include <sstream>
+#include <cuda_runtime.h>
 
-#include "cuda_runtime.h"
-
-namespace cupat
+namespace gmapf
 {
 	struct V2Int
 	{
@@ -75,9 +74,9 @@ namespace cupat
 }
 
 template <>
-struct std::hash<cupat::V2Int>
+struct std::hash<gmapf::V2Int>
 {
-	std::size_t operator()(const cupat::V2Int& k) const
+	std::size_t operator()(const gmapf::V2Int& k) const
 	{
 		return k.GetHash1();
 	}

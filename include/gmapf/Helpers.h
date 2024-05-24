@@ -2,17 +2,12 @@
 
 #include <iostream>
 
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 
-namespace cupat
+namespace gmapf
 {
 #define TIME_GET std::chrono::high_resolution_clock::now()
-#define TIME_SET(x) (x) = TIME_GET
-#define TIME_STAMP(x) auto (x) = TIME_GET
-#define TIME_DIFF_MS(start) std::chrono::duration_cast<std::chrono::microseconds>(TIME_GET - (start)).count() / 1000.0f
-#define TIME_COUNTER_ADD(start, counter) (counter) += std::chrono::duration_cast<std::chrono::microseconds>(TIME_GET - (start)).count()
-#define TIME_COUNTER_GET(counter) ((counter) / 1000.0f)
-#define TIME_APPLY_RECORD(dur, durSum, durMax) (durSum) += (dur); (durMax) = std::max((dur), (durMax))
+#define TIME_DIFF_MS(start, end) std::chrono::duration_cast<std::chrono::microseconds>((end) - (start)).count() / 1000.0f
 #define TIME_STD_OUT(text, durSum, durMax, count) std::cout << (text) << " avg: " << ((durSum) / (count)) << " max: " << (durMax) << std::endl
 
 	inline void CudaCheck(const cudaError_t& result, const char* info)
@@ -20,7 +15,7 @@ namespace cupat
 		if (result == cudaSuccess)
 			return;
 
-		std::cout << "[cupat] cuda error, " << info << std::endl;
+		std::cout << "[gmapf] cuda error, " << info << std::endl;
 		std::cout << cudaGetErrorName(result) << std::endl;
 		std::cout << cudaGetErrorString(result) << std::endl;
 		throw std::exception();
@@ -33,7 +28,7 @@ namespace cupat
 		if (error == cudaSuccess)
 			return;
 
-		std::cout << "[cupat] cuda error" << std::endl;
+		std::cout << "[gmapf] cuda error" << std::endl;
 		std::cout << cudaGetErrorName(error) << std::endl;
 		std::cout << cudaGetErrorString(error) << std::endl;
 		throw std::exception();
@@ -45,7 +40,7 @@ namespace cupat
 		if (error == cudaSuccess)
 			return;
 
-		std::cout << "[cupat] cuda error" << std::endl;
+		std::cout << "[gmapf] cuda error" << std::endl;
 		std::cout << cudaGetErrorName(error) << std::endl;
 		std::cout << cudaGetErrorString(error) << std::endl;
 		throw std::exception();
@@ -57,7 +52,7 @@ namespace cupat
 		if (error == cudaSuccess)
 			return false;
 
-		std::cout << "[cupat] cuda error on " << info << std::endl;
+		std::cout << "[gmapf] cuda error on " << info << std::endl;
 		std::cout << cudaGetErrorName(error) << std::endl;
 		std::cout << cudaGetErrorString(error) << std::endl;
 
@@ -74,7 +69,7 @@ namespace cupat
 		const char* errorStr;
 		cuGetErrorString(res, &errorStr);
 
-		std::cout << "[cupat] cuda error" << std::endl;
+		std::cout << "[gmapf] cuda error" << std::endl;
 		std::cout << errorName << std::endl;
 		std::cout << errorStr << std::endl;
 		throw std::exception();

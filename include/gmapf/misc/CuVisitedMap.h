@@ -1,8 +1,8 @@
 #pragma once
 #include <cassert>
-#include <crt/host_defines.h>
+#include <cuda_runtime.h>
 
-namespace cupat
+namespace gmapf
 {
 	template<typename T>
 	class CuVisitedMap
@@ -19,7 +19,7 @@ namespace cupat
 		{
 			auto p = static_cast<char*>(ptr);
 			_count = reinterpret_cast<int*>(p);
-			p += 8;
+			p += sizeof(int*);
 			_entries = reinterpret_cast<Entry*>(p);
 		}
 
@@ -66,11 +66,11 @@ namespace cupat
 
 		__host__ __device__ static constexpr size_t EvalSize(int count)
 		{
-			return 8 + sizeof(Entry) * count;
+			return sizeof(int*) + sizeof(Entry) * count;
 		}
 
 	private:
-		Entry* _entries = nullptr;
 		int* _count = nullptr;
+		Entry* _entries = nullptr;
 	};
 }

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "cuda_runtime.h"
-#include "math_constants.h"
+#include <cuda_runtime.h>
+#include <math_constants.h>
 #include <cmath>
 #include <ostream>
 
 #include "V2Int.h"
 
-namespace cupat
+namespace gmapf
 {
 	struct V2Float
 	{
